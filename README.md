@@ -8,6 +8,8 @@ library for 3BLD, and the 21 PLL cases with algs for your to learn or practice.
 
 ## Demo
 
+<img width="1906" height="905" alt="image" src="https://github.com/user-attachments/assets/fd56d97d-590f-4ba0-b783-f528cc439cbe" />
+
 Add demo videos
 
 | | |
@@ -19,7 +21,7 @@ Add demo videos
 | **Appearance** | Show the settings implemented and previews|
 | **csTimer Import** | Show how to import. |
 
-*Clips pending — the table above is the shot list.*
+*Clips pending*
 
 ## Running it locally
 
