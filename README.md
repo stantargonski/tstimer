@@ -14,7 +14,8 @@ the settings menu.
 ## Demo
 
 <img style="width:500px" alt="image" src="https://github.com/user-attachments/assets/8337a997-6c59-46c4-8291-23847ddcc31e" />
-<img style="width:500px" alt="stats-fullshot" src="https://github.com/user-attachments/assets/2ad6cc5d-c701-4a2e-8dd3-edc8a530f425" />
+
+<img style="width:500px" alt="screencapture-stantargonski-github-io-tstimer-2026-09-05-21_20_34" src="https://github.com/user-attachments/assets/9124960c-dc82-4499-8960-4f3fad951768" />
 
 Add demo videos
 
