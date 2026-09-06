@@ -8,7 +8,7 @@ library for 3BLD, and the 21 PLL cases with algs for your to learn or practice.
 
 ## Demo
 
-<img style="width:600px;" alt="image" src="https://github.com/user-attachments/assets/fd56d97d-590f-4ba0-b783-f528cc439cbe" />
+<img style="width:500px" alt="image" src="https://github.com/user-attachments/assets/8337a997-6c59-46c4-8291-23847ddcc31e" />
 
 Add demo videos
 
