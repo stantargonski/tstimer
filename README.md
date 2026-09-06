@@ -5,6 +5,10 @@ library for 3BLD, and the 21 PLL cases with algs for your to learn or practice.
 
 **[tstimer](https://stantargonski.github.io/tstimer/)**
 
+## Import csTimer data
+
+In csTimer: the wrench icon → Export → "Export to file". Drag and drop the .txt or open in 
+the settings menu.
 
 ## Demo
 
@@ -29,11 +33,6 @@ Add demo videos
 npm install
 npm run dev
 ```
-
-## Import csTimer data
-
-In csTimer: the wrench icon → Export → "Export to file". Drag and drop the .txt or open in 
-the settings menu.
 
 ## Acknowledgements
 
