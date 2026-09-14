@@ -32,6 +32,23 @@
   --dead: #13161b;
   --radius: 12px;
   --radius-sm: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Depth, focus and motion. Every one is mixed from the palette above rather
+     than written as a colour, so each theme — the custom one included — gets
+     a version that agrees with it without theme.ts knowing these exist. */
+  --line-soft: color-mix(in srgb, var(--line) 60%, transparent);
+  --surface-hover: color-mix(in srgb, var(--text) 7%, transparent);
+  --shadow-1:
+    0 1px 2px color-mix(in srgb, black 16%, transparent),
+    0 1px 1px color-mix(in srgb, black 8%, transparent);
+  --shadow-2:
+    0 12px 32px -14px color-mix(in srgb, black 50%, transparent),
+    0 2px 6px color-mix(in srgb, black 14%, transparent);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur: 140ms;
 
   /* Written by src/theme/theme.ts. Listed here so the app still looks like
      itself with scripting halfway through starting. */
@@ -71,6 +88,29 @@ button {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  touch-action: manipulation;
+}
+/* One easing for every control, listed property by property — never `all`,
+   which would also animate layout. */
+button,
+select,
+input,
+textarea {
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+/* A focus ring for anything that doesn't draw its own. `:where` keeps it at
+   zero specificity, so every rule further down that styles focus still wins. */
+:where(button, select, a, [role='tab'], [role='switch']):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: default;
 }
 /* A stray drag mid-solve highlighting half the page is the thing to kill.
    Anything genuinely text-like opts back in. */
@@ -222,7 +262,8 @@ textarea,
   background: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
   backdrop-filter: blur(var(--panel-blur));
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
   padding: 16px;
 }
 /* The grid is a fixed 25 × 26px, so it never flexes. The two side panels share
@@ -550,6 +591,20 @@ textarea,
   font-weight: 700;
 }
 .actions button:hover { color: var(--text); border-color: var(--accent); }
+/* The one thing in a row of actions you are meant to press next. */
+.actions button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+.actions button.primary:hover { filter: brightness(1.08); }
+/* In a settings row the buttons size to their labels. Stretching to fill is
+   right for a bar of actions, and made a lone "delete everything" the width of
+   the page. */
+.setting-control .actions button,
+.setting-below .actions button {
+  flex: none;
+}
 
 .fill {
   max-width: 720px;
@@ -929,6 +984,12 @@ textarea,
   color: var(--text);
   border-color: var(--text-dim);
 }
+/* On: a round is open, or the preview is showing. */
+.rail-tool[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 
 
 
@@ -972,10 +1033,15 @@ textarea,
 }
 /* Four columns the whole list shares, so the numbers line up down the rail
    rather than each row laying itself out. */
+.solve-list {
+  /* Wide enough for the longest # in the list. SolveList sets --n-digits; 26px
+     is the floor the short lists always had. */
+  --n-col: max(26px, calc(var(--n-digits, 2) * 1ch + 2px));
+}
 .solve-head,
 .solve-row {
   display: grid;
-  grid-template-columns: 26px 1fr 1fr 1fr;
+  grid-template-columns: var(--n-col) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: baseline;
   gap: 6px;
   width: 100%;
@@ -1006,7 +1072,7 @@ textarea,
 .solve-open {
   grid-column: 1 / span 2;
   display: grid;
-  grid-template-columns: 26px 1fr;
+  grid-template-columns: var(--n-col) minmax(0, 1fr);
   align-items: baseline;
   gap: 6px;
   padding: 0;
@@ -1046,6 +1112,11 @@ textarea,
 .solve-t {
   color: var(--text);
   font-weight: 700;
+}
+.solve-n,
+.solve-t,
+.solve-ao {
+  white-space: nowrap;
 }
 .solve-row.dnf .solve-t {
   color: var(--text-dim);
@@ -1496,77 +1567,172 @@ textarea,
 }
 
 /* ----- settings page ----- */
-/* A rail of jump links, then the settings. The rail lives in what used to be
-   dead space on the left of a centred page, and sticks — a settings page long
-   enough to need section links is one you have already scrolled the headings
-   off the top of.
+/* Tabs, then the chosen tab's groups as pills, then one group as a card. It
+   was a single long scroll with jump links, which stopped working once it held
+   thirty settings; now every group is a click away and search finds the rest.
 
-   `minmax(0, 1fr)` rather than `1fr` on the content column: a grid track sized
-   `1fr` refuses to shrink below its content, and the sticky preview inside it
-   would push the whole page wider on a narrow window. */
+   `minmax(0, 1fr)` rather than `1fr` in the timer tab's split: a grid track
+   sized `1fr` refuses to shrink below its content, and the sticky preview
+   inside it would push the whole page wider on a narrow window. */
 .settings-page {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 18px;
+  max-width: 1120px;
+  margin: 0 auto;
 }
-@media (min-width: 1000px) {
-  .settings-page {
-    display: grid;
-    grid-template-columns: 150px minmax(0, 1fr);
-    align-items: start;
-    gap: 40px;
-  }
-}
-.settings-nav {
+/* Tabs on the left, search on the right, wrapping under each other when the
+   window is too narrow for both. */
+.settings-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
-@media (min-width: 1000px) {
-  .settings-nav {
-    position: sticky;
-    /* The scroller is `main.content`, which already starts under the top bar,
-       so this is a gap rather than a correction for it. */
-    top: 0;
-    flex-direction: column;
-    flex-wrap: nowrap;
-  }
+/* The three tabs, as one raised segmented bar. Scrolls sideways rather than
+   wrapping on a phone, like the top bar does. */
+.settings-tabs {
+  display: inline-flex;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--panel-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
 }
-.settings-nav button {
-  padding: 7px 11px;
+.settings-tabs::-webkit-scrollbar,
+.settings-subtabs::-webkit-scrollbar {
+  display: none;
+}
+.settings-tabs [role='tab'] {
+  flex: none;
+  padding: 8px 18px;
   background: none;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-dim);
-  font-size: calc(14px * var(--font-scale));
+  font-size: calc(15px * var(--font-scale));
   font-weight: 700;
-  text-align: left;
-  cursor: pointer;
+  text-transform: capitalize;
+  white-space: nowrap;
 }
-.settings-nav button:hover {
+.settings-tabs [role='tab']:hover {
   color: var(--text);
-  background: var(--panel-2);
+  background: var(--surface-hover);
 }
-.settings-nav button[aria-current='true'] {
+.settings-tabs [role='tab'][aria-selected='true'] {
   color: var(--accent-ink);
   background: var(--accent);
+  box-shadow: var(--shadow-1);
 }
-.settings-body {
+.settings-search {
+  flex: 1 1 220px;
+  max-width: 340px;
+  padding: 10px 14px;
+  background-color: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--panel-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(14px * var(--font-scale));
+}
+.settings-search::placeholder {
+  color: var(--text-dim);
+}
+.settings-search:hover {
+  border-color: var(--text-dim);
+}
+.settings-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* One tab's worth: the groups as pills, then the group's card. */
+.settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 34px;
+  gap: 14px;
+}
+.settings-subtabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-subtabs [role='tab'] {
+  flex: none;
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 700;
+  white-space: nowrap;
+}
+.settings-subtabs [role='tab']:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.settings-subtabs [role='tab'][aria-selected='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* A group of rows as one card, divided by hairlines — the grouped-list shape
+   every modern settings screen uses, because the card says where a group
+   starts and stops without a heading having to. */
+.settings-card {
   min-width: 0;
+  padding: 2px 20px;
+  background: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--panel-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
 }
-.settings-group {
+
+/* Search results: every group of every tab, with the empty ones taken out by
+   the stylesheet — a row that doesn't match renders nothing, so a group with
+   no rows left in it is one with nothing to show. */
+.settings-results {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  /* So a jumped-to heading lands under the top of the scroller, not against it. */
-  scroll-margin-top: 8px;
+  gap: 18px;
 }
-.settings-group .panel-title { margin-bottom: 10px; }
-/* The headings that open a second thing inside one section need air above them. */
-.settings-group .panel-title:not(:first-child) { margin-top: 26px; }
+.settings-sub:not(:has(.setting-row, .setting-block)) {
+  display: none;
+}
+.settings-sub-title {
+  margin: 0 0 8px 4px;
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.settings-sub-title span {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+.settings-empty {
+  display: none;
+  margin: 0;
+  padding: 36px 0;
+  text-align: center;
+  color: var(--text-dim);
+}
+.settings-results:not(:has(.setting-row, .setting-block)) .settings-empty {
+  display: block;
+}
 
 /* Controls on one side, the mock on the other. */
 .settings-split {
@@ -1581,12 +1747,6 @@ textarea,
     align-items: start;
     gap: 40px;
   }
-}
-.settings-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
 }
 /* Follows the scroll instead of sliding away at the first toggle. The whole
    point of the mock is watching what a setting does, which it cannot do from
@@ -1605,12 +1765,21 @@ textarea,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--line);
+  gap: 8px 16px;
+  padding: 14px 0;
 }
-.settings-group .setting-row:last-child {
-  border-bottom: 0;
+/* Hairlines between rows, not under each one, so the card's own edge is the
+   last line rather than a rule doubled against it. */
+:is(.setting-row, .setting-block) + :is(.setting-row, .setting-block) {
+  border-top: 1px solid var(--line-soft);
+}
+.setting-block {
+  padding: 16px 0;
+}
+/* Anything a row needs the full width for, like a confirmation or a report. */
+.setting-below {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 .setting-label {
   flex: 1 1 220px;
@@ -1639,36 +1808,116 @@ textarea,
 
 /* Segmented buttons: the options are all visible, so choosing is one click and
    comparing is none. */
+/* One track with the options inside it, the chosen one raised — reads as a
+   single control rather than a row of separate buttons. */
 .choice {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
 }
 .choice button {
-  padding: 6px 11px;
-  background: var(--panel-2);
+  padding: 5px 12px;
+  background: none;
   color: var(--text-dim);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
   font-size: calc(14px * var(--font-scale));
   font-weight: 600;
 }
 .choice button:hover {
   color: var(--text);
+  background: var(--surface-hover);
 }
 .choice button[aria-pressed='true'] {
   background: var(--accent);
   color: var(--accent-ink);
+  box-shadow: var(--shadow-1);
 }
 
+/* An on/off switch: a track and a knob that slides across it. The words stay
+   in the markup for anything reading it aloud, and out of sight otherwise. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.switch:hover {
+  border-color: var(--text-dim);
+}
+.switch[aria-checked='true'] {
+  background: var(--accent);
+  border-color: transparent;
+}
+.switch[aria-checked='true']::before {
+  transform: translateX(18px);
+  background: var(--accent-ink);
+}
+.switch-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
+/* A native dropdown, drawn to match: the arrow is two gradients so it takes
+   the theme's colour, which an icon file could not. */
+.setting-select {
+  appearance: none;
+  padding: 7px 34px 7px 12px;
+  background-color: var(--panel-2);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+.setting-select:hover {
+  border-color: var(--text-dim);
+}
+.setting-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.setting-select option {
+  background-color: var(--panel);
+  color: var(--text);
+}
 
 /* Each chip is painted in the theme it selects — the swatch *is* the preview. */
-/* A fixed width, so flipping the setting doesn't resize the control under the
-   pointer that just flipped it. */
-.choice.toggle button {
-  min-width: 62px;
-}
 
 .theme-grid {
   display: flex;
@@ -2128,15 +2377,8 @@ textarea,
 .data-report .data-rejected {
   color: var(--holding);
 }
-.data-report button {
+.data-report .actions {
   margin-top: 10px;
-  padding: 6px 10px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  border-radius: var(--radius-sm);
-  font-size: calc(14px * var(--font-scale));
-  font-weight: 700;
 }
 
 /* ----- importing a csTimer export ----- */
@@ -2513,36 +2755,53 @@ textarea,
 }
 
 /* ----- stepper: the control that replaced every slider ----- */
+/* One bordered control, − field + — rather than three boxes side by side. The
+   ring goes on the whole thing when any part of it has focus. */
 .stepper {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
-  gap: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.stepper:hover {
+  border-color: var(--text-dim);
+}
+.stepper:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 .stepper button {
-  width: 32px;
+  width: 34px;
   flex: none;
-  background: var(--panel-2);
+  padding: 0;
+  background: none;
   color: var(--text-dim);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: 0;
   font-size: calc(16px * var(--font-scale));
   font-weight: 700;
   line-height: 1;
 }
 .stepper button:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.stepper button:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--text);
 }
 .stepper button:disabled {
   opacity: 0.35;
-  cursor: default;
 }
 .stepper input {
-  width: 64px;
-  padding: 6px 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  width: 58px;
+  padding: 7px 6px;
+  background: none;
+  border: 0;
+  border-inline: 1px solid var(--line-soft);
+  border-radius: 0;
   color: var(--text);
   font: inherit;
   font-size: calc(14px * var(--font-scale));
@@ -2551,9 +2810,7 @@ textarea,
   text-align: center;
 }
 .stepper input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  border-color: transparent;
+  outline: none;
 }
 /* Two steppers that belong together — width and height. */
 .pair-control {
@@ -2610,7 +2867,8 @@ textarea,
   background: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
   backdrop-filter: blur(var(--panel-blur));
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
 }
 .card-head {
   display: flex;
@@ -3360,10 +3618,18 @@ textarea,
 /* ----- deleting everything ----- */
 /* Red, and the only red control on the page. Everything else here either adds
    something or can be undone by pressing it again. */
+/* The confirmation steps, opened under the delete row. Tinted so the step you
+   are on is plainly part of the dangerous thing, not the next row down. */
 .data-danger {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--holding) 40%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--holding) 7%, transparent);
+}
+.data-danger .actions {
+  margin-top: 0;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .data-danger h3,
 .data-snapshot h3,
@@ -3390,7 +3656,6 @@ textarea,
 .data-danger-field {
   width: 160px;
   padding: 7px 10px;
-  margin-bottom: 10px;
   background: var(--panel-2);
   border: 1px solid var(--holding);
   border-radius: var(--radius-sm);
@@ -3409,4 +3674,22 @@ textarea,
 }
 .actions button.danger:disabled {
   opacity: 0.4;
+}
+
+/* Open the timer, or take the import back out. */
+.cstimer-done-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* Motion is decoration everywhere in this app, so under reduced motion it all
+   goes — the state changes still land, just without the slide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
 }

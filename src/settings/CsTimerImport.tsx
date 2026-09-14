@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { describeBytes, MAX_FILE_BYTES, MAX_NAME, tooBig } from '../data/limits'
 import {
-  applyImport, countSolves, looksImported, NEW_SESSION, parseCsTimer,
+  applyImport, countSolves, looksImported, NEW_SESSION, parseCsTimer, undoImport,
   type CsTimerFile, type ImportedSession, type ImportResult, type ImportRow,
 } from '../timer/cstimer'
 import { EVENTS, eventOf, type EventId } from '../timer/events'
@@ -49,10 +49,13 @@ export default function CsTimerImport({ store, onImport, onOpenTimer }: CsTimerI
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<ImportResult[] | null>(null)
   const [dragging, setDragging] = useState(false)
+  /** Whether the last thing that happened here was an undo, to say so. */
+  const [undone, setUndone] = useState(false)
 
   async function read(chosen: File) {
     setError(null)
     setResults(null)
+    setUndone(false)
 
     // The one check worth making before the file is read at all: `size` is free,
     // and decoding a hundred megabytes to discover it isn't an export is not.
@@ -129,11 +132,6 @@ export default function CsTimerImport({ store, onImport, onOpenTimer }: CsTimerI
         if (dropped) void read(dropped)
       }}
     >
-      {/* An h3, matching the sub-headings inside the data section it now sits
-          in. It used to carry an h2 of its own, which read as a section of the
-          page rather than as one of the things you can do with your data. */}
-      <h3>from csTimer</h3>
-
       <div className="actions">
         <button type="button" onClick={() => picker.current?.click()}>
           {file ? 'choose another file' : 'import from csTimer'}
@@ -175,13 +173,31 @@ export default function CsTimerImport({ store, onImport, onOpenTimer }: CsTimerI
             ))}
           </ul>
 
-          {/* The import ends where the solves now are, rather than on a report
-              about them. */}
-          <button type="button" className="ghost" onClick={onOpenTimer}>
-            open the timer
-          </button>
+          <div className="cstimer-done-actions">
+            {/* The import ends where the solves now are, rather than on a report
+                about them. */}
+            <button type="button" className="ghost" onClick={onOpenTimer}>
+              open the timer
+            </button>
+            {/* Takes out exactly what this import added, so solves timed since
+                are safe — and the store it works on is the live one, not a
+                copy from before the import. */}
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                onImport(undoImport(store, results))
+                setResults(null)
+                setUndone(true)
+              }}
+            >
+              undo import
+            </button>
+          </div>
         </div>
       )}
+
+      {undone && <p className="cstimer-done-head">Import undone. Those solves are gone again.</p>}
 
       {file && (
         <div className="cstimer-preview">
