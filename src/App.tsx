@@ -19,14 +19,18 @@ import {
 } from './timer/settings';
 import { loadTimerStore, saveTimerStore } from './timer/storage';
 import StatsPage from './timer/StatsPage';
+import {
+  DEFAULT_KEYMAP, loadKeymap, saveKeymap, withHint, type ActionId, type Keymap,
+} from './keys/keymap';
+import { useHotkeys } from './keys/useHotkeys';
 
 type Section = 'timer' | 'stats' | 'bld' | 'cfop' | 'settings'
 
 // The timer is first because it is what the app is for; everything else is
 // something you go and look at between solves.
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'timer', label: 'Timer' },
-  { id: 'stats', label: 'Stats' },
+const SECTIONS: { id: Section; label: string; action?: ActionId }[] = [
+  { id: 'timer', label: 'Timer', action: 'goTimer' },
+  { id: 'stats', label: 'Stats', action: 'goStats' },
   { id: 'bld', label: '3BLD' },
   { id: 'cfop', label: 'CFOP'},
   { id: 'settings', label: 'Settings' },
@@ -41,9 +45,10 @@ const SECTIONS: { id: Section; label: string }[] = [
  * That it is the same control in both places is the whole point: whatever put
  * the bar away is sitting where it left it, waiting to bring it back.
  */
-function Brand({ appearance, onAppearance }: {
+function Brand({ appearance, onAppearance, keymap }: {
   appearance: Appearance
   onAppearance: (next: Appearance) => void
+  keymap: Keymap
 }) {
   const stowed = appearance.topBarStowed
   return (
@@ -51,7 +56,7 @@ function Brand({ appearance, onAppearance }: {
       type="button"
       className="brand"
       aria-expanded={!stowed}
-      title={stowed ? 'show the menu' : 'hide the menu'}
+      title={withHint(stowed ? 'show the menu' : 'hide the menu', keymap, 'toggleTopBar')}
       onClick={() => onAppearance({ ...appearance, topBarStowed: !stowed })}
     >
       tstimer
@@ -80,6 +85,11 @@ export default function App() {
   const [timerStore, setTimerStore] = useState(loadTimerStore);
   const [backgroundNonce, setBackgroundNonce] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [keymap, setKeymap] = useState(loadKeymap);
+  /** Whether the timer is mid-solve or has a sheet open — anything where a
+      letter is not a request to leave the page. Reported for the same reason
+      `solving` is: the shortcuts that change page live up here. */
+  const [timerBusy, setTimerBusy] = useState(false);
 
   function updateSettings(next: Settings) {
     setSettings(next);
@@ -100,11 +110,24 @@ export default function App() {
     applyAppearance(next);
   }
 
+  function updateKeymap(next: Keymap) {
+    setKeymap(next);
+    saveKeymap(next);
+  }
+
+  // The shortcuts that belong to no one page. The timer's own are in
+  // TimerPanel, which is only listening while it is on screen.
+  useHotkeys(keymap, {
+    goTimer: () => setSection('timer'),
+    goStats: () => setSection('stats'),
+    toggleTopBar: () => updateAppearance({ ...appearance, topBarStowed: !appearance.topBarStowed }),
+  }, keymap.enabled && !timerBusy);
+
   /**
    * Every setting back to stock, and nothing else.
    *
-   * Lives here because the three settings objects live here — the settings page
-   * is handed two of them and has never heard of the buffers. Deliberately does
+   * Lives here because the settings objects live here — the settings page is
+   * handed most of them and has never heard of the buffers. Deliberately does
    * not touch the four *stores*: this is the button for a layout you have made
    * a mess of, not for starting over, and the two should never be one keypress
    * apart from each other.
@@ -113,6 +136,7 @@ export default function App() {
     updateTimerSettings(DEFAULT_TIMER_SETTINGS);
     updateAppearance(DEFAULT_APPEARANCE);
     updateSettings(DEFAULT_SETTINGS);
+    updateKeymap(DEFAULT_KEYMAP);
   }
 
   useEffect(() => {
@@ -193,16 +217,17 @@ export default function App() {
           reads as the app having gone away. */}
       {appearance.topBarStowed ? (
         <div className="topbar-float">
-          <Brand appearance={appearance} onAppearance={updateAppearance} />
+          <Brand appearance={appearance} onAppearance={updateAppearance} keymap={keymap} />
         </div>
       ) : (
         <header className="topbar">
-          <Brand appearance={appearance} onAppearance={updateAppearance} />
+          <Brand appearance={appearance} onAppearance={updateAppearance} keymap={keymap} />
           <nav className="nav">
             {SECTIONS.map((item) => (
               <button
                 key={item.id}
                 aria-current={section === item.id}
+                title={item.action ? withHint(item.label, keymap, item.action) : undefined}
                 onClick={() => setSection(item.id)}
               >
                 {item.label}
@@ -242,6 +267,8 @@ export default function App() {
             settings={timerSettings}
             onSettings={updateTimerSettings}
             onSolving={setSolving}
+            keymap={keymap}
+            onBusy={setTimerBusy}
           />
         )}
         {section === 'stats' && (
@@ -262,6 +289,8 @@ export default function App() {
             onTimerStore={setTimerStore}
             onOpenTimer={() => setSection('timer')}
             onRestoreDefaults={restoreDefaults}
+            keymap={keymap}
+            onKeymap={updateKeymap}
           />
         )}
        </div>

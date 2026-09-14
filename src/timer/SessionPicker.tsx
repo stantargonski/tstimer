@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import type { Session } from './types'
 
 interface SessionPickerProps {
@@ -9,10 +9,12 @@ interface SessionPickerProps {
   onRename: (name: string) => void
   onDelete: () => void
   onExport: () => void
+  /** For the shortcut that opens it. */
+  selectRef?: Ref<HTMLSelectElement>
 }
 
 export default function SessionPicker({
-  sessions, activeId, onSelect, onCreate, onRename, onDelete, onExport,
+  sessions, activeId, onSelect, onCreate, onRename, onDelete, onExport, selectRef,
 }: SessionPickerProps) {
   const [draft, setDraft] = useState<string | null>(null)   // null = not renaming
   const input = useRef<HTMLInputElement>(null)
@@ -52,6 +54,7 @@ export default function SessionPicker({
   return (
     <>
       <select
+        ref={selectRef}
         className="session-select"
         value={activeId}
         onChange={(event) => {

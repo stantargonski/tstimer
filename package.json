@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "check:cube": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-cube.ts",
     "check:scramble": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-scramble.ts",
-    "check": "npm run check:algs && npm run check:cube && npm run check:scramble && npm run check:timer && npm run check:stats && npm run check:cstimer",
+    "check": "npm run check:algs && npm run check:cube && npm run check:scramble && npm run check:timer && npm run check:stats && npm run check:cstimer && npm run check:keys",
+    "check:keys": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-keys.ts",
     "check:cstimer": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-cstimer.ts",
     "check:timer": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-timer.ts",
     "check:stats": "node --experimental-strip-types --import ./scripts/ts-loader.mjs scripts/check-stats.ts"

@@ -852,6 +852,39 @@ textarea,
   position: relative;
 }
 
+/* What a shortcut just did, when nothing else on screen says so — a deleted
+   solve, a copied scramble, inspection switched on. Low and centred, clear of
+   the clock, and gone on its own. */
+.timer-flash {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  z-index: 4;
+  margin: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.timer-flash span {
+  display: block;
+  padding: 6px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 600;
+  white-space: nowrap;
+  animation: timer-flash 1.6s ease forwards;
+}
+@keyframes timer-flash {
+  0% { opacity: 0; transform: translateY(4px); }
+  10%, 75% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .timer-flash span { animation: none; }
+}
+
 /* ----- left rail: session, history, stats ----- */
 .timer-rail {
   flex: 0 0 300px;
@@ -1806,6 +1839,62 @@ textarea,
   margin: 0;
 }
 
+/* ----- shortcut keys ----- */
+/* Two keycaps and a way back to the default, the same width on every row so
+   the keys read down the page as columns. */
+.key-slots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.key-slot {
+  display: inline-flex;
+  align-items: center;
+}
+.key-capture {
+  min-width: 72px;
+  padding: 5px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: ui-monospace, 'JetBrains Mono', 'Roboto Mono', monospace;
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+}
+.key-capture:hover {
+  border-color: var(--accent);
+}
+.key-capture.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-family: inherit;
+}
+.key-clear,
+.key-default {
+  padding: 4px 6px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+}
+.key-clear:hover:not(:disabled),
+.key-default:hover:not(:disabled) {
+  color: var(--text);
+}
+.key-default:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.key-note {
+  margin: 0;
+  font-size: calc(13px * var(--font-scale));
+  color: var(--text-dim);
+}
+
 /* Segmented buttons: the options are all visible, so choosing is one click and
    comparing is none. */
 /* One track with the options inside it, the chosen one raised — reads as a
@@ -2560,6 +2649,7 @@ textarea,
 .timer-frame.solving .session-graph,
 .timer-frame.solving .rail-open,
 .timer-frame.solving .timer-hint,
+.timer-frame.solving .timer-flash,
 /* These two hang off the clock rather than sitting beside it, and are gated in
    the markup on the clock running. That gate does not cover inspection, which
    recedes the same way — so they are listed here with everything else. */
@@ -2773,6 +2863,9 @@ textarea,
 }
 .session-graph:active { cursor: grabbing; }
 .session-graph .chart-hit { cursor: inherit; }
+/* Lifted over the plot: .chart-wrap is positioned and comes later, so without
+   this it covers the grip's corner and every press on the grip becomes a move. */
+.session-graph .preview-grip { z-index: 1; }
 /* The stats page's weights, scaled down with the plot. */
 .session-graph .chart .line { stroke-width: 1.8; }
 .session-graph .chart .point.last {

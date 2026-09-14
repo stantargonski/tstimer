@@ -8,6 +8,7 @@ import { effectiveMs, execMs, type Session, type Solve } from '../timer/types';
 import { eventOf } from '../timer/events';
 import { attribution, dateStamp, formatTime, type Decimals } from '../timer/format';
 import { APPEARANCE_KEY, readAppearance } from '../theme/theme';
+import { KEYMAP_KEY, readKeymap } from '../keys/keymap';
 import {
   clearBackground, fromDataUrl, getBackground, putBackground, toDataUrl,
 } from '../theme/imageStore';
@@ -77,6 +78,11 @@ const SLOTS: Slot[] = [
     key: APPEARANCE_KEY,
     label: 'appearance',
     accept: (value) => readAppearance(value),
+  },
+  {
+    key: KEYMAP_KEY,
+    label: 'keyboard shortcuts',
+    accept: (value) => readKeymap(value),
   },
 ];
 

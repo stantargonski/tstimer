@@ -76,7 +76,7 @@ export default function TimerPreview({ settings }: { settings: TimerSettings }) 
             {settings.showScramble && (
               <div className={settings.flatScramble ? 'scramble-bar flat' : 'scramble-bar'}>
                 <div className="scramble-head">
-                  <span className="event-picker">3x3</span>
+                  {settings.showEventPicker && <span className="event-picker">3x3</span>}
                   <span className="scramble-nav">
                     <span>‹ last</span>
                     <span>next ›</span>

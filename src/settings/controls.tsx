@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { matches, SearchContext } from './search'
+import { codeLabel, codeOf, comboFrom, comboLabel, isModifier, type KeyCombo } from '../keys/keymap'
 
 /**
  * The building blocks every settings tab is made of.
@@ -129,6 +130,77 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (next: b
     >
       <span className="switch-text">{value ? 'on' : 'off'}</span>
     </button>
+  )
+}
+
+/**
+ * One key of a shortcut: shows what it is, and records a new one when pressed.
+ *
+ * The press it records is prevented and stopped where it lands, so the page's
+ * own shortcuts — which skip anything already prevented — never fire on the
+ * key you are trying to bind. Escape or clicking away gives up; the × beside
+ * it clears the key.
+ */
+export function KeyCapture({ combo, label, onChange }: {
+  combo: KeyCombo | null
+  /** Spoken name of this slot, e.g. "comp sim, alternate key". */
+  label: string
+  onChange: (next: KeyCombo | null) => void
+}) {
+  const [recording, setRecording] = useState(false)
+  /** Why the last key pressed while recording was turned down. */
+  const [refused, setRefused] = useState<string | null>(null)
+
+  function stop() {
+    setRecording(false)
+    setRefused(null)
+  }
+
+  const current = combo ? comboLabel(combo) : '—'
+  const cleared = !combo || recording
+
+  return (
+    <span className="key-slot">
+      <button
+        type="button"
+        className={recording ? 'key-capture recording' : 'key-capture'}
+        aria-label={`${label}: ${recording ? 'press a key, or Escape to cancel' : combo ? current : 'none'}`}
+        onClick={() => (recording ? stop() : setRecording(true))}
+        onBlur={stop}
+        onKeyDown={(press) => {
+          const code = codeOf(press)
+          // Tab is left alone so the keyboard can still leave; leaving gives up.
+          if (!recording || code === 'Tab') return
+          press.preventDefault()
+          press.stopPropagation()
+          if (press.repeat || !code || isModifier(code)) return
+          if (code === 'Escape') { stop(); return }
+
+          const next = comboFrom(press)
+          if (!next) { setRefused(`${codeLabel(code)} is reserved`); return }
+          stop()
+          onChange(next)
+        }}
+        // A focused button clicks itself when space is let go, which would
+        // start a fresh recording straight after refusing the key.
+        onKeyUp={(press) => { if (recording && codeOf(press) === 'Space') press.preventDefault() }}
+      >
+        {recording ? (refused ?? 'press a key…') : current}
+      </button>
+      {/* Always laid out, only sometimes shown, so the key chips line up down
+          the page whether or not each one has a key in it. */}
+      <button
+        type="button"
+        className="key-clear"
+        aria-label={`clear ${label}`}
+        title="clear"
+        disabled={cleared}
+        style={{ visibility: cleared ? 'hidden' : 'visible' }}
+        onClick={() => onChange(null)}
+      >
+        ×
+      </button>
+    </span>
   )
 }
 

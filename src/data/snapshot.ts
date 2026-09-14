@@ -29,7 +29,7 @@ import { clearBackground, getBackground, putBackground } from '../theme/imageSto
  * It is not a schema version and nothing branches on its value — it is only the
  * "have I run here before?" marker that decides whether to take a snapshot.
  */
-export const APP_BUILD = '2026-09-03';
+export const APP_BUILD = '2026-09-14';
 
 const BUILD_SEEN_KEY = 'app.build.seen';
 const SNAPSHOT_KEY = 'pre-migration-snapshot';

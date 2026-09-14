@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTimer } from './useTimer'
+import { useHotkeys } from '../keys/useHotkeys'
+import { keyHint, withHint, type Keymap } from '../keys/keymap'
+import { popDeleted, pushDeleted } from './undo'
 import { clockPhase, clockText, isInspecting } from './display'
 import { digitsFace, formatTime, maxEntryDigits, parseDigits } from './format'
 import { eventOf, type EventId, type WcaEvent } from './events'
@@ -43,10 +46,40 @@ interface TimerPanelProps {
       component styles, so no stylesheet here can reach it — the app has to be
       the one to put it away. */
   onSolving?: (solving: boolean) => void
+  keymap: Keymap
+  /** Told whenever a key press belongs to the timer rather than to a shortcut:
+      mid-solve, inspecting, or with a sheet open. */
+  onBusy?: (busy: boolean) => void
+}
+
+/** Whether there is text selected that ⌘C should copy instead of the scramble. */
+function hasSelection(): boolean {
+  const active = document.activeElement
+  if (
+    (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+    active.selectionStart !== active.selectionEnd
+  ) return true
+  return (window.getSelection()?.toString() ?? '') !== ''
+}
+
+/**
+ * Pops a dropdown open, or declines the key if it isn't on screen.
+ *
+ * Not focused first: a focused select makes useTimer stand down, and the popup
+ * closing without a change would leave it that way, costing the next space
+ * press. Focus is only the fallback where showPicker isn't supported.
+ */
+function openPicker(select: HTMLSelectElement | null): false | void {
+  if (!select) return false
+  try {
+    select.showPicker()
+  } catch {
+    select.focus()
+  }
 }
 
 export default function TimerPanel({
-  store, setStore, settings, onSettings, onSolving,
+  store, setStore, settings, onSettings, onSolving, keymap, onBusy,
 }: TimerPanelProps) {
 
   // A comp round is a slice of the session's own solves rather than a mode of
@@ -67,6 +100,17 @@ export default function TimerPanel({
   const [pendingMbld, setPendingMbld] = useState<
     { ms: number; memoMs: number | null; penalty: Penalty } | null
   >(null)
+  /** A word on what a shortcut just did, when nothing else on screen says so.
+      `at` tells two identical messages apart, so the second still shows. */
+  const [flash, setFlash] = useState<{ text: string; at: number } | null>(null)
+  const eventSelect = useRef<HTMLSelectElement>(null)
+  const sessionSelect = useRef<HTMLSelectElement>(null)
+
+  useEffect(() => {
+    if (!flash) return
+    const id = setTimeout(() => setFlash(null), 1600)
+    return () => clearTimeout(id)
+  }, [flash])
 
   // Derived every render — never mirrored into state of its own.
   const session = activeSession(store)
@@ -130,7 +174,11 @@ export default function TimerPanel({
     }))
   }
 
+  /** Kept for the undo key on its way out, whether the list or a key deleted it. */
   function deleteSolve(id: number) {
+    const index = solves.findIndex((solve) => solve.id === id)
+    if (index === -1) return
+    pushDeleted({ sessionId: session.id, index, solve: solves[index] })
     updateActive((item) => ({
       ...item,
       solves: item.solves.filter((solve) => solve.id !== id),
@@ -253,6 +301,118 @@ export default function TimerPanel({
     return () => onSolving?.(false)
   }, [solving, onSolving])
 
+  // Anything but idle means the keyboard is the clock's: inspecting, holding,
+  // or mid-solve, where any key at all stops it. A sheet open over the timer
+  // has its own keys as well.
+  const busy = phase !== 'idle' || detail !== null || pendingMbld !== null
+
+  useEffect(() => {
+    onBusy?.(busy)
+    return () => onBusy?.(false)
+  }, [busy, onBusy])
+
+  function say(text: string) {
+    setFlash((prev) => ({ text, at: (prev?.at ?? 0) + 1 }))
+  }
+
+  function deleteLast() {
+    const last = solves[solves.length - 1]
+    if (!last) { say('no solves to delete'); return }
+    deleteSolve(last.id)
+    const undo = keyHint(keymap, 'undoDelete')
+    say(undo ? `solve deleted — ${undo} to undo` : 'solve deleted')
+  }
+
+  /** Puts the last deleted solve back where it was, in whichever session it
+      came from. */
+  function undoDelete() {
+    const last = popDeleted()
+    if (!last) { say('nothing to undo'); return }
+
+    const home = store.sessions.find((item) => item.id === last.sessionId)
+    if (!home) { say('that solve’s session is gone'); return }
+
+    setStore((prev) => ({
+      ...prev,
+      sessions: prev.sessions.map((item) => {
+        // Checked in here as well, so a solve can never be put back twice.
+        if (item.id !== last.sessionId) return item
+        if (item.solves.some((solve) => solve.id === last.solve.id)) return item
+        const next = [...item.solves]
+        next.splice(Math.min(last.index, next.length), 0, last.solve)
+        return { ...item, solves: next }
+      }),
+    }))
+    say(home.id === session.id ? 'solve restored' : `solve restored to ${home.name}`)
+  }
+
+  function penaltyOnLast(pick: (current: Penalty) => Penalty) {
+    const last = solves[solves.length - 1]
+    if (!last) { say('no solves yet'); return }
+    const penalty = pick(last.penalty)
+    setPenalty(last.id, penalty)
+    say(penalty === 'plus2' ? '+2' : penalty === 'dnf' ? 'DNF' : 'no penalty')
+  }
+
+  function copyScramble(): false | void {
+    if (hasSelection()) return false
+    navigator.clipboard.writeText(scrambleText(scramble)).then(
+      () => say('scramble copied'),
+      () => say('could not copy the scramble'),
+    )
+  }
+
+  function toggleInspection() {
+    const inspection = !settings.inspection
+    onSettings({ ...settings, inspection })
+    say(inspection && !event.inspection
+      ? `inspection on — ${event.name} doesn’t use it`
+      : `inspection ${inspection ? 'on' : 'off'}`)
+  }
+
+  // The three rail switches, shared by their buttons and their keys.
+  function toggleComp() {
+    if (openRound) setRound(null)
+    else startRound()
+  }
+
+  /** In a blindfolded event this opens the preview for the scramble on screen
+      only, and never touches the setting — the next scramble starts closed. */
+  function togglePreview() {
+    if (bldClosed) setPeekFor(previewShown ? null : scramble)
+    else onSettings({ ...settings, showCubeNet: !settings.showCubeNet })
+  }
+
+  function toggleGraph() {
+    onSettings({ ...settings, showGraph: !settings.showGraph })
+  }
+
+  useHotkeys(keymap, {
+    deleteLast,
+    undoDelete,
+    plus2: () => penaltyOnLast((current) => (current === 'plus2' ? 'none' : 'plus2')),
+    dnf: () => penaltyOnLast((current) => (current === 'dnf' ? 'none' : 'dnf')),
+    clearPenalty: () => penaltyOnLast(() => 'none'),
+    prevScramble: () => {
+      if (index === 0) return false
+      setIndex(index - 1)
+    },
+    nextScramble: goNext,
+    copyScramble,
+    openEvent: () => openPicker(eventSelect.current),
+    openSession: () => openPicker(sessionSelect.current),
+    toggleInspection,
+    toggleRail: () => {
+      // No rail to stow when both of the things it holds are switched off.
+      if (!settings.showSolveList && !settings.showStats) return false
+      onSettings({ ...settings, railStowed: !settings.railStowed })
+    },
+    toggleScramble: () => onSettings({ ...settings, showScramble: !settings.showScramble }),
+    toggleComp,
+    togglePreview,
+    toggleGraph,
+  }, keymap.enabled && !busy)
+
   /**
    * Commits what has been typed, if it amounts to a time.
    *
@@ -341,7 +501,7 @@ export default function TimerPanel({
           type="button"
           className="rail-open"
           aria-expanded={false}
-          title="show the solve list"
+          title={withHint('show the solve list', keymap, 'toggleRail')}
           onClick={() => onSettings({ ...settings, railStowed: false })}
         >
           ›
@@ -369,7 +529,7 @@ export default function TimerPanel({
               type="button"
               className="rail-stow"
               aria-expanded
-              title="hide the solve list"
+              title={withHint('hide the solve list', keymap, 'toggleRail')}
               onClick={() => onSettings({ ...settings, railStowed: true })}
             >
               ‹
@@ -382,6 +542,7 @@ export default function TimerPanel({
               onRename={(name) => updateActive((item) => ({ ...item, name }))}
               onDelete={deleteSession}
               onExport={exportSession}
+              selectRef={sessionSelect}
             />
           </div>
 
@@ -408,22 +569,19 @@ export default function TimerPanel({
               type="button"
               className="rail-tool"
               aria-pressed={openRound !== null}
-              onClick={openRound ? () => setRound(null) : startRound}
+              title={withHint('comp sim', keymap, 'toggleComp')}
+              onClick={toggleComp}
             >
               🏁 comp sim
             </button>
-            {/* In a blindfolded event this opens the preview for the scramble on
-                screen only, and never touches the setting — the next scramble
-                starts closed again. */}
             <button
               type="button"
               className="rail-tool"
               aria-pressed={previewShown}
-              title={bldClosed ? 'opens for this scramble only' : undefined}
-              onClick={() => {
-                if (bldClosed) setPeekFor(previewShown ? null : scramble)
-                else onSettings({ ...settings, showCubeNet: !settings.showCubeNet })
-              }}
+              title={withHint(
+                bldClosed ? 'opens for this scramble only' : 'scramble preview', keymap, 'togglePreview',
+              )}
+              onClick={togglePreview}
             >
               🧊 preview
             </button>
@@ -433,7 +591,8 @@ export default function TimerPanel({
               type="button"
               className="rail-tool"
               aria-pressed={settings.showGraph}
-              onClick={() => onSettings({ ...settings, showGraph: !settings.showGraph })}
+              title={withHint('session graph', keymap, 'toggleGraph')}
+              onClick={toggleGraph}
             >
               📈 graph
             </button>
@@ -452,7 +611,9 @@ export default function TimerPanel({
             flat={settings.flatScramble}
             mono={settings.monoScramble}
           >
-            <EventPicker value={session.event} onChange={setEvent} />
+            {settings.showEventPicker && (
+              <EventPicker value={session.event} onChange={setEvent} selectRef={eventSelect} />
+            )}
             {event.scramble.kind === 'mbf' && (
               <MbldCount value={settings.mbldCount} onChange={setMbldCount} />
             )}
@@ -504,6 +665,10 @@ export default function TimerPanel({
                   autoFocus
                   inputMode="numeric"
                   aria-label="type the time this solve took"
+                  // Shortcuts still reach past it: the box prevents the keys it
+                  // uses — digits, enter, escape, backspace — and the shortcut
+                  // listener skips anything prevented.
+                  data-hotkeys="through"
                   onKeyDown={onEntryKey}
                 />
               ) : (
@@ -641,6 +806,12 @@ export default function TimerPanel({
           onDiscard={() => setPendingMbld(null)}
         />
       )}
+
+      {/* Always mounted, so a screen reader is already watching it when the
+          message arrives; the span is keyed so a repeat replays its fade. */}
+      <p className="timer-flash" role="status">
+        {flash && <span key={flash.at}>{flash.text}</span>}
+      </p>
     </div>
   )
 }

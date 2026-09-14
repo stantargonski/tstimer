@@ -44,6 +44,9 @@ export interface TimerSettings {
   scrambleClick: ScrambleClick;
   entryMode: EntryMode;
   showScramble: boolean;
+  /** The event dropdown above the scramble. Off leaves the scramble and its
+      last / next buttons exactly where they were. */
+  showEventPicker: boolean;
   showSolveList: boolean;
   showStats: boolean;
   showAverages: boolean;
@@ -139,6 +142,7 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   scrambleClick: 'copy',
   entryMode: 'timer',
   showScramble: true,
+  showEventPicker: true,
   showSolveList: true,
   showStats: true,
   showAverages: true,
@@ -252,6 +256,7 @@ export function readTimerSettings(input: unknown): TimerSettings {
       ),
       entryMode: one(parsed.entryMode, ['timer', 'typed'], DEFAULT_TIMER_SETTINGS.entryMode),
       showScramble: bool(parsed.showScramble, true),
+      showEventPicker: bool(parsed.showEventPicker, true),
       showSolveList: bool(parsed.showSolveList, true),
       showStats: bool(parsed.showStats, true),
       showAverages: bool(parsed.showAverages, true),

@@ -3,7 +3,9 @@ import CsTimerImport from './CsTimerImport'
 import { BackupPanel, DeleteEverything, ImportUndo, SnapshotRestore } from './DataSection'
 import TimerPreview from './TimerPreview'
 import ThemeEditor from './ThemeEditor'
+import { ShortcutGeneral, ShortcutGroup } from './ShortcutsSection'
 import { Choice, Row, Searchable, Select, Stepper, Toggle } from './controls'
+import type { ActionGroup, Keymap } from '../keys/keymap'
 import { lastTab, rememberTab, type SettingsTab as TabId } from './lastTab'
 import { SearchContext } from './search'
 import {
@@ -14,7 +16,7 @@ import { SCALE_MAX, SCALE_MIN, type TimerSettings } from '../timer/settings'
 import type { TimerStore } from '../timer/types'
 
 /**
- * Three tabs, each split into the few things people come to it for.
+ * Four tabs, each split into the few things people come to it for.
  *
  * The page used to be one long scroll with jump links, which worked until it
  * held thirty settings: finding one meant knowing which heading it hid under
@@ -41,6 +43,19 @@ const TABS: { id: TabId; name: string; subs: { id: string; name: string }[] }[] 
       { id: 'entry', name: 'entry' },
       { id: 'scramble', name: 'scramble' },
       { id: 'preview', name: 'preview' },
+    ],
+  },
+  {
+    id: 'keys',
+    name: 'shortcuts',
+    // Prefixed because `group()` is keyed on the sub's id alone, and the timer
+    // tab already has a 'scramble'.
+    subs: [
+      { id: 'keys-general', name: 'general' },
+      { id: 'keys-solves', name: 'solves' },
+      { id: 'keys-scramble', name: 'scramble' },
+      { id: 'keys-navigation', name: 'navigation' },
+      { id: 'keys-toggles', name: 'toggles' },
     ],
   },
   {
@@ -83,13 +98,15 @@ interface SettingsPageProps {
   onTimerStore: (next: TimerStore) => void
   /** Leaves for the timer, so an import ends where the solves are. */
   onOpenTimer: () => void
-  /** Puts every setting back to stock. Owned by App, which holds all three. */
+  /** Puts every setting back to stock. Owned by App, which holds all of them. */
   onRestoreDefaults: () => void
+  keymap: Keymap
+  onKeymap: (next: Keymap) => void
 }
 
 export default function SettingsPage({
   appearance, onAppearance, onBackgroundChanged, timer, onTimer, timerStore, onTimerStore,
-  onOpenTimer, onRestoreDefaults,
+  onOpenTimer, onRestoreDefaults, keymap, onKeymap,
 }: SettingsPageProps) {
   const picker = useRef<HTMLInputElement>(null)
   const search = useRef<HTMLInputElement>(null)
@@ -339,6 +356,13 @@ export default function SettingsPage({
             <Row label="scramble banner" keywords="show hide">
               <Toggle value={timer.showScramble} onChange={(v) => setTimer('showScramble', v)} />
             </Row>
+            <Row
+              label="event picker"
+              description="The event dropdown above the scramble. The scramble and its last / next stay put."
+              keywords="event type puzzle show hide scramble banner"
+            >
+              <Toggle value={timer.showEventPicker} onChange={(v) => setTimer('showEventPicker', v)} />
+            </Row>
             <Row label="solve list" keywords="times history sidebar rail">
               <Toggle value={timer.showSolveList} onChange={(v) => setTimer('showSolveList', v)} />
             </Row>
@@ -492,6 +516,21 @@ export default function SettingsPage({
               <Toggle value={timer.showGraph} onChange={(v) => setTimer('showGraph', v)} />
             </Row>
           </>
+        )
+
+      case 'keys-general':
+        return <ShortcutGeneral keymap={keymap} onKeymap={onKeymap} />
+
+      case 'keys-solves':
+      case 'keys-scramble':
+      case 'keys-navigation':
+      case 'keys-toggles':
+        return (
+          <ShortcutGroup
+            group={id.slice('keys-'.length) as ActionGroup}
+            keymap={keymap}
+            onKeymap={onKeymap}
+          />
         )
 
       case 'backup':

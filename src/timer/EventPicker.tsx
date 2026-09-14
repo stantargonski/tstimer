@@ -1,8 +1,11 @@
+import type { Ref } from 'react'
 import { EVENTS, type EventId } from './events'
 
 interface EventPickerProps {
   value: EventId
   onChange: (id: EventId) => void
+  /** For the shortcut that opens it. */
+  selectRef?: Ref<HTMLSelectElement>
 }
 
 /**
@@ -12,11 +15,12 @@ interface EventPickerProps {
  * the single most-changed control on the page, and it belongs next to the thing
  * it changes.
  */
-export default function EventPicker({ value, onChange }: EventPickerProps) {
+export default function EventPicker({ value, onChange, selectRef }: EventPickerProps) {
   return (
     <label className="event-picker">
       <span className="visually-hidden">event</span>
       <select
+        ref={selectRef}
         value={value}
         onChange={(event) => {
           // Handing focus back before the change lands. A focused <select> makes
