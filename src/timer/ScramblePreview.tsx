@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { solvedCube, stateAfter } from '../cube/nxn'
 import { NetView } from '../cube/CubeView'
 import type { WcaEvent } from './events'
 import type { Scramble } from './scramble'
-import { PREVIEW_MARGIN, PREVIEW_MAX, PREVIEW_MIN } from './settings'
+import { PREVIEW_MAX, PREVIEW_MIN } from './settings'
+import { useFloatingPanel } from './useFloatingPanel'
 
 interface ScramblePreviewProps {
   event: WcaEvent
@@ -26,11 +27,8 @@ interface ScramblePreviewProps {
  * position you will actually pick up. A 3BLD preview with mixed colours on top
  * is correct, not broken.
  *
- * Position is a gap from the right and bottom edges rather than a top-left
- * coordinate, so the panel keeps its relationship to the corner it started in
- * when the window changes size. It resizes from its top-left corner for the
- * same reason CSS `resize: both` is no use here: the dragged corner can't be
- * the pinned one, or the panel grows off the screen.
+ * Moved by its title bar and resized from its top-left corner — see
+ * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
   event, scramble, width, height, right, bottom, onResize, onMove, onReset,
@@ -50,82 +48,18 @@ export default function ScramblePreview({
     }
   }, [event.preview, size, scramble])
 
-  const resizing = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
-  const moving = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null)
-
-  /** The furthest the panel may be pushed and still be grabbable by its title. */
-  function limits() {
-    return {
-      maxRight: Math.max(0, window.innerWidth - width - PREVIEW_MARGIN),
-      maxBottom: Math.max(0, window.innerHeight - height - PREVIEW_MARGIN),
-    }
-  }
-
-  function place(nextRight: number, nextBottom: number) {
-    const { maxRight, maxBottom } = limits()
-    onMove(
-      Math.round(Math.min(maxRight, Math.max(PREVIEW_MARGIN, nextRight))),
-      Math.round(Math.min(maxBottom, Math.max(PREVIEW_MARGIN, nextBottom))),
-    )
-  }
-
-  // A window that shrinks under the panel would otherwise leave it stranded
-  // off-screen with nothing left to grab.
-  //
-  // The handler is read out of a ref rather than being the dependency of the
-  // effect: this component re-renders on every frame of a running solve, and
-  // re-subscribing to `resize` sixty times a second to pick up a number that
-  // almost never changes is a lot of work to do for nothing.
-  const reclamp = useRef(() => {})
-  useEffect(() => {
-    reclamp.current = () => place(right, bottom)
+  const panel = useFloatingPanel({
+    width,
+    height,
+    right,
+    bottom,
+    minWidth: PREVIEW_MIN,
+    maxWidth: PREVIEW_MAX,
+    minHeight: PREVIEW_MIN,
+    maxHeight: PREVIEW_MAX,
+    onResize,
+    onMove,
   })
-
-  useEffect(() => {
-    function onWindowResize() {
-      reclamp.current()
-    }
-    window.addEventListener('resize', onWindowResize)
-    return () => window.removeEventListener('resize', onWindowResize)
-  }, [])
-
-  function startResize(down: React.PointerEvent<HTMLElement>) {
-    down.preventDefault()
-    down.currentTarget.setPointerCapture(down.pointerId)
-    resizing.current = { x: down.clientX, y: down.clientY, width, height }
-  }
-
-  function startMove(down: React.PointerEvent<HTMLElement>) {
-    down.preventDefault()
-    down.currentTarget.setPointerCapture(down.pointerId)
-    moving.current = { x: down.clientX, y: down.clientY, right, bottom }
-  }
-
-  function onPointerMove(move: React.PointerEvent<HTMLElement>) {
-    const size = resizing.current
-    if (size) {
-      // Dragging up and left makes it bigger, because the opposite corner is
-      // the one that's pinned.
-      const clamp = (value: number) =>
-        Math.min(PREVIEW_MAX, Math.max(PREVIEW_MIN, Math.round(value)))
-      onResize(
-        clamp(size.width - (move.clientX - size.x)),
-        clamp(size.height - (move.clientY - size.y)),
-      )
-      return
-    }
-
-    const from = moving.current
-    if (!from) return
-    // Right and bottom count inwards, so a drag right or down shrinks them.
-    place(from.right - (move.clientX - from.x), from.bottom - (move.clientY - from.y))
-  }
-
-  function onPointerUp(up: React.PointerEvent<HTMLElement>) {
-    resizing.current = null
-    moving.current = null
-    up.currentTarget.releasePointerCapture(up.pointerId)
-  }
 
   return (
     <div className="scramble-preview" style={{ width, height, right, bottom }}>
@@ -134,19 +68,19 @@ export default function ScramblePreview({
         className="preview-grip"
         title="drag to resize"
         aria-label="resize the scramble preview"
-        onPointerDown={startResize}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerDown={panel.startResize}
+        onPointerMove={panel.onPointerMove}
+        onPointerUp={panel.onPointerUp}
+        onPointerCancel={panel.onPointerUp}
       />
 
       <span
         className="preview-title"
         title="drag to move"
-        onPointerDown={startMove}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerDown={panel.startMove}
+        onPointerMove={panel.onPointerMove}
+        onPointerUp={panel.onPointerUp}
+        onPointerCancel={panel.onPointerUp}
       >
         {event.short} scramble
 

@@ -2,6 +2,7 @@ import { useMemo, useState, type PointerEvent } from 'react'
 import { formatTime } from '../format'
 import { rollingAverages } from '../stats'
 import { effectiveMs, type Solve } from '../types'
+import { linePath, niceStep } from './scale'
 
 /**
  * Every solve in the session, with the ao5, ao12 and ao100 drawn over the top.
@@ -34,18 +35,6 @@ function xStep(count: number): number {
 interface TimeChartProps {
   solves: Solve[]
   decimals: 2 | 3
-}
-
-/** Rounds a span out to a readable step, so gridlines land on numbers people use. */
-function niceStep(span: number): number {
-  const rough = span / 4
-  const magnitude = 10 ** Math.floor(Math.log10(rough))
-  const steps = [1, 2, 2.5, 5, 10]
-
-  for (const step of steps) {
-    if (rough <= step * magnitude) return step * magnitude
-  }
-  return 10 * magnitude
 }
 
 export default function TimeChart({ solves, decimals }: TimeChartProps) {
@@ -81,19 +70,6 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
     PAD.left + (solves.length === 1 ? plotWidth / 2 : (index / (solves.length - 1)) * plotWidth)
   const y = (ms: number) =>
     PAD.top + plotHeight - ((ms - bottom) / (top - bottom)) * plotHeight
-
-  /** A line that simply stops wherever the average isn't defined or is a DNF. */
-  function path(values: number[]): string {
-    let out = ''
-    let open = false
-
-    values.forEach((value, index) => {
-      if (!Number.isFinite(value)) { open = false; return }
-      out += `${open ? 'L' : 'M'}${x(index).toFixed(1)} ${y(value).toFixed(1)} `
-      open = true
-    })
-    return out.trim()
-  }
 
   const step = niceStep(top - bottom)
   const lines: number[] = []
@@ -165,9 +141,9 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
           />
         )}
 
-        <path className="line ao100" d={path(ao100)} fill="none" />
-        <path className="line ao12" d={path(ao12)} fill="none" />
-        <path className="line ao5" d={path(ao5)} fill="none" />
+        <path className="line ao100" d={linePath(ao100, x, y)} fill="none" />
+        <path className="line ao12" d={linePath(ao12, x, y)} fill="none" />
+        <path className="line ao5" d={linePath(ao5, x, y)} fill="none" />
 
         {times.map((value, index) => {
           // DNFs have no height of their own, so they sit on the ceiling with a

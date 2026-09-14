@@ -9,6 +9,7 @@ import MbldCount from './MbldCount'
 import MbldPrompt from './MbldPrompt'
 import ScrambleBanner from './ScrambleBanner'
 import ScramblePreview from './ScramblePreview'
+import SessionGraph from './SessionGraph'
 import SessionPicker from './SessionPicker'
 import SolveList from './SolveList'
 import StatsPanel from './StatsPanel'
@@ -426,6 +427,16 @@ export default function TimerPanel({
             >
               🧊 preview
             </button>
+            {/* Draws whichever session is picked above, so switching sessions
+                is all it takes to look at another one. */}
+            <button
+              type="button"
+              className="rail-tool"
+              aria-pressed={settings.showGraph}
+              onClick={() => onSettings({ ...settings, showGraph: !settings.showGraph })}
+            >
+              📈 graph
+            </button>
           </div>
         </aside>
       )}
@@ -584,6 +595,23 @@ export default function TimerPanel({
               previewRight: DEFAULT_TIMER_SETTINGS.previewRight,
               previewBottom: DEFAULT_TIMER_SETTINGS.previewBottom,
             })}
+          />
+        )}
+
+        {settings.showGraph && (
+          <SessionGraph
+            solves={solves}
+            decimals={settings.decimals}
+            span={settings.graphSpan}
+            width={settings.graphWidth}
+            height={settings.graphHeight}
+            right={settings.graphRight}
+            bottom={settings.graphBottom}
+            onSpan={(graphSpan) => onSettings({ ...settings, graphSpan })}
+            onResize={(graphWidth, graphHeight) =>
+              onSettings({ ...settings, graphWidth, graphHeight })}
+            onMove={(graphRight, graphBottom) =>
+              onSettings({ ...settings, graphRight, graphBottom })}
           />
         )}
       </div>

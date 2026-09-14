@@ -14,6 +14,11 @@ export type ScrambleClick = 'copy' | 'next' | 'none';
  */
 export type EntryMode = 'timer' | 'typed';
 
+/** How many of the latest solves the timer's graph draws, in the order its pill
+    cycles through them. 0 is the whole session. */
+export const GRAPH_SPANS = [12, 50, 100, 0] as const;
+export type GraphSpan = (typeof GRAPH_SPANS)[number];
+
 export interface TimerSettings {
   schemaVersion: 2;
   /** How long space must be held before the timer arms. */
@@ -85,6 +90,14 @@ export interface TimerSettings {
    */
   previewRight: number;
   previewBottom: number;
+  /** The small graph of the active session that floats over the timer. */
+  showGraph: boolean;
+  graphSpan: GraphSpan;
+  /** The graph panel's size and position, kept the same way as the preview's. */
+  graphWidth: number;
+  graphHeight: number;
+  graphRight: number;
+  graphBottom: number;
   /** How many cubes a multi-blind attempt is for. */
   mbldCount: number;
   /**
@@ -143,6 +156,14 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   previewHeight: 268,
   previewRight: 16,
   previewBottom: 16,
+  showGraph: false,
+  graphSpan: 50,
+  graphWidth: 320,
+  graphHeight: 150,
+  // Just left of where the preview starts (16 + 320 + a 12px gap), so opening
+  // both doesn't stack one on the other.
+  graphRight: 348,
+  graphBottom: 16,
   mbldCount: 3,
   benchEvents: DEFAULT_BENCH_EVENTS,
   benchAo5Events: DEFAULT_BENCH_EVENTS,
@@ -159,6 +180,13 @@ export const PREVIEW_MAX = 680;
 /** How far off the edge the preview may be dragged. Enough stays on screen to
     grab it again. */
 export const PREVIEW_MARGIN = -40;
+
+/** How small and large the graph panel may be dragged. Shorter than the preview
+    allows, because a strip of graph still reads where a strip of cube doesn't. */
+export const GRAPH_MIN_WIDTH = 200;
+export const GRAPH_MAX_WIDTH = 680;
+export const GRAPH_MIN_HEIGHT = 90;
+export const GRAPH_MAX_HEIGHT = 480;
 
 export const MBLD_MIN = 2;
 export const MBLD_MAX = 60;
@@ -249,6 +277,18 @@ export function readTimerSettings(input: unknown): TimerSettings {
       // is a window to measure, and the panel re-clamps itself once mounted.
       previewRight: clamp(parsed.previewRight, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.previewRight),
       previewBottom: clamp(parsed.previewBottom, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.previewBottom),
+      showGraph: bool(parsed.showGraph, false),
+      graphSpan: GRAPH_SPANS.includes(parsed.graphSpan as GraphSpan)
+        ? parsed.graphSpan as GraphSpan
+        : DEFAULT_TIMER_SETTINGS.graphSpan,
+      graphWidth: clamp(
+        parsed.graphWidth, GRAPH_MIN_WIDTH, GRAPH_MAX_WIDTH, DEFAULT_TIMER_SETTINGS.graphWidth,
+      ),
+      graphHeight: clamp(
+        parsed.graphHeight, GRAPH_MIN_HEIGHT, GRAPH_MAX_HEIGHT, DEFAULT_TIMER_SETTINGS.graphHeight,
+      ),
+      graphRight: clamp(parsed.graphRight, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.graphRight),
+      graphBottom: clamp(parsed.graphBottom, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.graphBottom),
       mbldCount: clamp(parsed.mbldCount, MBLD_MIN, MBLD_MAX, DEFAULT_TIMER_SETTINGS.mbldCount),
       benchEvents: bench,
       benchAo5Events: parsed.benchAo5Events === undefined
