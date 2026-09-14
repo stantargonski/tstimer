@@ -484,6 +484,13 @@ export default function SettingsPage({
             >
               <Toggle value={timer.hideBldPreview} onChange={(v) => setTimer('hideBldPreview', v)} />
             </Row>
+            <Row
+              label="session graph"
+              description="A small graph of the session you're in; the 📈 button in the rail toggles it too."
+              keywords="chart plot trend progress"
+            >
+              <Toggle value={timer.showGraph} onChange={(v) => setTimer('showGraph', v)} />
+            </Row>
           </>
         )
 

@@ -18,6 +18,7 @@ import {
   average, best, bestAverage, bestAverageWindow, bestSingleIndex, mean, rollingAverages,
   stdev, trimCount, trimmedAverage,
 } from '../src/timer/stats';
+import { graphSeries } from '../src/timer/charts/sessionGraph';
 import type { Penalty, Solve } from '../src/timer/types';
 
 const failures: string[] = [];
@@ -240,10 +241,46 @@ check(
 check(inputDate(dateInput(NOW)) === startOfDay(NOW).getTime(), 'a date survives the round trip');
 check(inputDate('not a date') === null, 'and a value that is not a date is rejected');
 
+// ---- the timer's graph ----
+
+// The lines are worked out over the session and then cut to the window, so the
+// first points of "last 12" still carry an average instead of starting blank.
+const BASE = Array.from({ length: 30 }, (_, index) => 10_000 + (index % 7) * 500);
+const THIRTY = solvesOf(BASE);
+const last12 = graphSeries(THIRTY, 12);
+eq(last12.offset, 18, 'last 12 of 30 starts at the nineteenth solve');
+eq(last12.times.length, 12, 'and draws twelve of them');
+eq(last12.ao5[0], average(THIRTY.slice(14, 19), 5), 'its first ao5 reaches back before the window');
+eq(last12.ao12[0], average(THIRTY.slice(7, 19), 12), 'as does its first ao12');
+eq(graphSeries(THIRTY, 0).times.length, 30, 'span 0 draws the whole session');
+eq(graphSeries(THIRTY.slice(0, 5), 50).offset, 0, 'a span wider than the session is all of it');
+
+// A PB in the window is a PB of the session, not merely of what is on screen.
+const withPbs = [...BASE];
+withPbs[0] = 5000;
+withPbs[25] = 4000;
+const pbs = graphSeries(solvesOf(withPbs), 12).isPb;
+check(
+  pbs.filter(Boolean).length === 1 && pbs[7],
+  'only a solve that beats the whole session so far is marked a PB',
+);
+
+// Two DNFs in one ao5 make it a DNF, and the line breaks there rather than leaping.
+const withDnfs: (number | 'dnf')[] = [...BASE];
+withDnfs[20] = 'dnf';
+withDnfs[21] = 'dnf';
+const broken = graphSeries(solvesOf(withDnfs), 12);
+check(!Number.isFinite(broken.times[2]), 'a DNF is drawn as one');
+check(!Number.isFinite(broken.ao5[3]), 'two DNFs in an ao5 make it a DNF');
+check(Number.isFinite(broken.ao5[7]), 'and the line picks up once one of them has left the window');
+
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);
   for (const message of failures) console.error(`  ${message}`);
   process.exit(1);
 }
 
-console.log('✓ averages hold, ao5 and ao12 unchanged by the ao100 trim; windows cut where they say');
+console.log(
+  '✓ averages hold, ao5 and ao12 unchanged by the ao100 trim; windows cut where they say; '
+  + 'the timer graph reaches back for its averages and PBs',
+);

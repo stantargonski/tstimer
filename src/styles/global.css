@@ -2557,6 +2557,7 @@ textarea,
 .timer-frame.solving .comp-bar,
 .timer-frame.solving .scramble-bar,
 .timer-frame.solving .scramble-preview,
+.timer-frame.solving .session-graph,
 .timer-frame.solving .rail-open,
 .timer-frame.solving .timer-hint,
 /* These two hang off the clock rather than sitting beside it, and are gated in
@@ -2668,7 +2669,8 @@ textarea,
 /* Below the rule above, not up with the rest of the narrow-screen rules: the
    two have equal specificity, so this only wins by coming later. */
 @media (max-width: 820px) {
-  .scramble-preview { display: none; }
+  .scramble-preview,
+  .session-graph { display: none; }
 }
 .preview-grip {
   position: absolute;
@@ -2752,6 +2754,69 @@ textarea,
   height: 100%;
   border-radius: var(--radius-sm);
   background: var(--panel-2);
+}
+
+/* ----- session graph: the stats page's graph in miniature, over the timer ----- */
+/* The same panel as the preview, but held by the whole of it rather than by a
+   title bar — there is no title. The plot inside reuses .chart and its classes. */
+.session-graph {
+  position: absolute;
+  z-index: 2;
+  padding: 8px;
+  background: color-mix(in srgb, var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--panel-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.session-graph:active { cursor: grabbing; }
+.session-graph .chart-hit { cursor: inherit; }
+/* The stats page's weights, scaled down with the plot. */
+.session-graph .chart .line { stroke-width: 1.8; }
+.session-graph .chart .point.last {
+  fill: var(--accent);
+  opacity: 1;
+}
+/* Dim until the pointer is over the panel: it sits over the corner of the plot
+   where the latest solves land. */
+.graph-span {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  padding: 1px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+.session-graph:hover .graph-span { opacity: 1; }
+.graph-span:hover { color: var(--text); }
+/* .chart-tip on one line: there is room for the solve, not the whole card. */
+.graph-tip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, calc(-100% - 8px));
+  padding: 3px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.graph-tip b {
+  color: var(--text);
+  font-weight: 800;
 }
 
 /* ----- stepper: the control that replaced every slider ----- */
