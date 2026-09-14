@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { formatTime } from './format'
 import { rollingAverages } from './stats'
 import { effectiveMs, mbldPoints, type Penalty, type Solve } from './types'
@@ -113,7 +113,12 @@ export default function SolveList({
     }
 
   return (
-      <ol className="solve-list">
+      // The # column is sized to the longest number it holds. A fixed width fit
+      // three digits, and solve 1000 ran straight into its own time.
+      <ol
+        className="solve-list"
+        style={{ '--n-digits': String(solves.length).length } as CSSProperties}
+      >
       {/* Three of the four headings are controls now, so the row is no longer
           decoration to be hidden from a screen reader. */}
       <li className="solve-head">

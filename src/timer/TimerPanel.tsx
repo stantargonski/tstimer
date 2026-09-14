@@ -73,14 +73,23 @@ export default function TimerPanel({
   const event = eventOf(session.event)
 
   // A picture of the scramble is the one thing a blindfolded solve is not
-  // allowed to look at. `showCubeNet` is left alone, so this is off only for as
-  // long as the event is — switching back to 3x3 brings the preview straight
-  // back without anyone touching a setting.
-  const hidePreview = event.split && settings.hideBldPreview
+  // allowed to look at, so for those events it starts every scramble closed.
+  // `showCubeNet` is left alone, so switching back to 3x3 brings the preview
+  // straight back without anyone touching a setting.
+  const bldClosed = event.split && settings.hideBldPreview
 
   const options = { mbldCount: settings.mbldCount }
   const [scrambles, setScrambles] = useState<Scramble[]>(() => [scrambleFor(event, options)])
   const [index, setIndex] = useState(0)
+  /**
+   * The one scramble the preview was opened for in a blindfolded event.
+   *
+   * Compared by identity against the scramble on screen, so moving to any other
+   * scramble — a solve, next, last, a new event — closes it without anything
+   * having to remember to. A preview left open from the last attempt is exactly
+   * the peek the setting is there to prevent.
+   */
+  const [peekFor, setPeekFor] = useState<Scramble | null>(null)
   /** The event the queue in `scrambles` was built for. */
   const [builtFor, setBuiltFor] = useState(session.event)
 
@@ -97,6 +106,7 @@ export default function TimerPanel({
   }
 
   const scramble = scrambles[index]
+  const previewShown = bldClosed ? peekFor === scramble : settings.showCubeNet
 
   // The 2x2 needs a table built before it can give real random-state scrambles.
   // Asking as soon as the event is picked means it is nearly always ready by
@@ -391,23 +401,28 @@ export default function TimerPanel({
               timer, and putting them here keeps them still while the list
               above them grows. */}
           <div className="rail-tools">
-            {/* Neither carries a pressed state. Both act on the thing they name
-                and the thing they name is already on screen saying so — a lit
-                button is a second, slower answer to a question the stage has
-                already answered. Comp sim starts a round; the round's own × is
-                what ends it. */}
-            <button type="button" className="rail-tool" onClick={startRound}>
-              🏁 comp sim
-            </button>
-            {/* Disabled rather than hidden for a blindfolded event: a button
-                that vanishes looks like a bug, and one that does nothing looks
-                like a worse one. */}
+            {/* Both are switches: pressing one again puts back what the first
+                press did, and the lit state says which way it will go. */}
             <button
               type="button"
               className="rail-tool"
-              disabled={hidePreview}
-              title={hidePreview ? 'off for blindfolded events' : undefined}
-              onClick={() => onSettings({ ...settings, showCubeNet: !settings.showCubeNet })}
+              aria-pressed={openRound !== null}
+              onClick={openRound ? () => setRound(null) : startRound}
+            >
+              🏁 comp sim
+            </button>
+            {/* In a blindfolded event this opens the preview for the scramble on
+                screen only, and never touches the setting — the next scramble
+                starts closed again. */}
+            <button
+              type="button"
+              className="rail-tool"
+              aria-pressed={previewShown}
+              title={bldClosed ? 'opens for this scramble only' : undefined}
+              onClick={() => {
+                if (bldClosed) setPeekFor(previewShown ? null : scramble)
+                else onSettings({ ...settings, showCubeNet: !settings.showCubeNet })
+              }}
             >
               🧊 preview
             </button>
@@ -549,7 +564,7 @@ export default function TimerPanel({
 
         {/* Not pinned to a corner — it sits wherever it was last dragged, over
             the whole frame. */}
-        {settings.showCubeNet && !hidePreview && (
+        {previewShown && (
           <ScramblePreview
             event={event}
             scramble={scramble}

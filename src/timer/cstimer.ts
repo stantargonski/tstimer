@@ -3,7 +3,7 @@ import {
   MAX_FILE_BYTES, STORE_BUDGET,
 } from '../data/limits';
 import { DEFAULT_EVENT, eventOf, type EventId } from './events';
-import type { Penalty, Session, Solve, TimerStore } from './types';
+import { emptyTimerStore, type Penalty, type Session, type Solve, type TimerStore } from './types';
 
 /**
  * Reading a csTimer export.
@@ -401,6 +401,9 @@ export interface ImportResult {
   added: number;
   /** Solves the destination already had, left alone rather than doubled. */
   skipped: number;
+  /** The ids the added solves ended up with, so an undo takes out exactly
+      these and nothing timed alongside them. */
+  addedIds: number[];
 }
 
 export interface ImportOutcome {
@@ -419,7 +422,10 @@ export interface ImportOutcome {
  * the one already stored: an id is an identity, and rewriting the ids of solves
  * someone has been looking at for a year to make room is the wrong trade.
  */
-function appendTo(target: Session, incoming: Solve[]): { session: Session; added: number; skipped: number } {
+function appendTo(
+  target: Session,
+  incoming: Solve[],
+): { session: Session; added: number; skipped: number; addedIds: number[] } {
   const taken = new Set(target.solves.map((solve) => solve.id));
   const same = new Set(target.solves.map((solve) => `${solve.id}:${solve.ms}`));
   const kept: Solve[] = [];
@@ -445,6 +451,7 @@ function appendTo(target: Session, incoming: Solve[]): { session: Session; added
     },
     added: kept.length,
     skipped,
+    addedIds: kept.map((solve) => solve.id),
   };
 }
 
@@ -493,6 +500,7 @@ export function applyImport(store: TimerStore, rows: ImportRow[]): ImportOutcome
       results.push({
         name: session.name, sessionId: id, event: row.event,
         created: true, added: solves.length, skipped: 0,
+        addedIds: solves.map((solve) => solve.id),
       });
       return;
     }
@@ -502,6 +510,7 @@ export function applyImport(store: TimerStore, rows: ImportRow[]): ImportOutcome
     results.push({
       name: merged.session.name, sessionId: merged.session.id, event: row.event,
       created: false, added: merged.added, skipped: merged.skipped,
+      addedIds: merged.addedIds,
     });
   });
 
@@ -520,4 +529,41 @@ export function applyImport(store: TimerStore, rows: ImportRow[]): ImportOutcome
     added: results.reduce((total, result) => total + result.added, 0),
     skipped: results.reduce((total, result) => total + result.skipped, 0),
   };
+}
+
+/**
+ * The store with one import taken back out.
+ *
+ * Works from what the import *added* rather than from a copy of the store as it
+ * was: a copy would also take back every solve timed since, and every rename.
+ * Sessions the import created go whole; sessions it added to lose exactly the
+ * solves it put there and nothing else.
+ */
+export function undoImport(store: TimerStore, results: ImportResult[]): TimerStore {
+  const created = new Set<string>();
+  const added = new Map<string, Set<number>>();
+  for (const result of results) {
+    if (result.created) {
+      created.add(result.sessionId);
+      continue;
+    }
+    // Two rows can land in the same session, so their ids are pooled.
+    const ids = added.get(result.sessionId) ?? new Set<number>();
+    for (const id of result.addedIds) ids.add(id);
+    added.set(result.sessionId, ids);
+  }
+
+  const sessions = store.sessions
+    .filter((session) => !created.has(session.id))
+    .map((session) => {
+      const ids = added.get(session.id);
+      return ids ? { ...session, solves: session.solves.filter((solve) => !ids.has(solve.id)) } : session;
+    });
+
+  // Never leave the store with nothing to render.
+  if (sessions.length === 0) return emptyTimerStore();
+  const activeId = sessions.some((session) => session.id === store.activeId)
+    ? store.activeId
+    : sessions[0].id;
+  return { ...store, sessions, activeId };
 }

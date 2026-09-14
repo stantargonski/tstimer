@@ -46,12 +46,13 @@ export interface TimerSettings {
   showDelta: boolean;
   showCubeNet: boolean;
   /**
-   * Keep the preview off for blindfolded events.
+   * Start the preview closed on every blindfolded scramble.
    *
    * A picture of the scramble is the one thing a blindfolded solve is not
-   * allowed to look at, so it is off by default — but only for those events, and
-   * `showCubeNet` is left alone, so switching back to a sighted event brings the
-   * preview straight back without touching a setting.
+   * allowed to look at, so it is closed by default — but only for those events.
+   * The rail's preview button still opens it, for the scramble on screen only,
+   * and `showCubeNet` is left alone, so switching back to a sighted event brings
+   * the preview straight back without touching a setting.
    */
   hideBldPreview: boolean;
   hideUiWhileRunning: boolean;
