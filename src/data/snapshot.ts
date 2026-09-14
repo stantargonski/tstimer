@@ -21,7 +21,7 @@
 
 import { SLOT_KEYS } from './backup';
 import { idbDelete, idbGet, idbPut } from './idb';
-import { clearBackground } from '../theme/imageStore';
+import { clearBackground, getBackground, putBackground } from '../theme/imageStore';
 
 /**
  * Bump this on any release that changes how stored data is read or written.
@@ -80,11 +80,7 @@ function capture(): Snapshot | null {
     const previousBuild = localStorage.getItem(BUILD_SEEN_KEY);
     if (previousBuild === APP_BUILD) return null;
 
-    const data: Record<string, string> = {};
-    for (const key of SLOT_KEYS) {
-      const raw = localStorage.getItem(key);
-      if (raw !== null) data[key] = raw;
-    }
+    const data = readSlots();
 
     // A fresh install has nothing worth a snapshot; just remember the build.
     if (Object.keys(data).length === 0) {
@@ -102,6 +98,17 @@ function capture(): Snapshot | null {
     // No localStorage at all. Nothing to protect.
     return null;
   }
+}
+
+/** Every slot's raw string as it stands right now. Synchronous, and throws
+    only where localStorage itself does. */
+function readSlots(): Record<string, string> {
+  const data: Record<string, string> = {};
+  for (const key of SLOT_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw !== null) data[key] = raw;
+  }
+  return data;
 }
 
 function markSeen(): void {
@@ -146,6 +153,69 @@ export async function clearSnapshot(): Promise<void> {
 }
 
 /**
+ * The same idea for a backup import: a copy of everything, taken just before
+ * the import writes over it, so the import can be taken back.
+ *
+ * Kept in IndexedDB beside the snapshot, for the same budget reason, and kept
+ * across the reload an import needs — the undo is offered again afterwards.
+ * One copy only: a second import replaces it, and undo means the last one.
+ */
+const IMPORT_COPY_KEY = 'pre-import-copy';
+
+export interface ImportCopy {
+  takenAt: string;
+  /** Raw localStorage strings, verbatim, like the snapshot's. */
+  data: Record<string, string>;
+  /** The background picture, which lives outside localStorage. */
+  background: Blob | null;
+}
+
+/** Throws if the copy could not be kept; the caller decides whether to go on. */
+export async function takeImportCopy(): Promise<void> {
+  // Read before the first await, so nothing can write in between.
+  const data = readSlots();
+  const copy: ImportCopy = {
+    takenAt: new Date().toISOString(),
+    data,
+    background: await getBackground(),
+  };
+  await idbPut(IMPORT_COPY_KEY, copy);
+}
+
+export async function getImportCopy(): Promise<ImportCopy | null> {
+  const value = await idbGet<ImportCopy>(IMPORT_COPY_KEY);
+  if (!value || typeof value !== 'object') return null;
+  if (typeof value.data !== 'object' || value.data === null) return null;
+  return value;
+}
+
+/**
+ * Puts everything back as it was before the last import, then forgets the copy.
+ *
+ * Slots the copy doesn't hold are removed rather than left alone: they are ones
+ * the import created, and leaving them would be half an undo. The caller
+ * reloads afterwards, as it does after the import itself.
+ */
+export async function restoreImportCopy(): Promise<boolean> {
+  const copy = await getImportCopy();
+  if (!copy) return false;
+
+  try {
+    for (const key of SLOT_KEYS) {
+      const raw = copy.data[key];
+      if (typeof raw === 'string') localStorage.setItem(key, raw);
+      else localStorage.removeItem(key);
+    }
+    if (copy.background instanceof Blob) await putBackground(copy.background);
+    else await clearBackground();
+    await idbDelete(IMPORT_COPY_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Removes every trace of this app from this browser.
  *
  * The snapshot goes with it, and that is the point worth being deliberate
@@ -165,5 +235,6 @@ export async function eraseEverything(): Promise<void> {
   }
 
   await clearSnapshot();
+  await idbDelete(IMPORT_COPY_KEY);
   await clearBackground();
 }

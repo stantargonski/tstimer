@@ -18,9 +18,9 @@
 import { cleanName, cleanScramble, MAX_NAME, MAX_SCRAMBLE } from '../src/data/limits';
 import {
   applyImport, countSolves, eventFromScramble, looksImported, NEW_SESSION, parseCsTimer,
-  type ImportRow,
+  undoImport, type ImportRow,
 } from '../src/timer/cstimer';
-import { effectiveMs, emptyTimerStore, newSession, type TimerStore } from '../src/timer/types';
+import { effectiveMs, emptyTimerStore, newSession, newSolve, type TimerStore } from '../src/timer/types';
 
 const failures: string[] = [];
 
@@ -323,6 +323,41 @@ try {
   check(
     (problem as Error).message.includes('more than the browser will keep'),
     'an oversized import is refused in words that say what to do',
+  );
+}
+
+// Undo takes out exactly what an import put in: a session it created goes
+// whole, a session it added to loses only the solves it added.
+{
+  const parsed = parseCsTimer(FILE);
+  const mine = { ...newSession('mine', '333'), solves: [{ ...newSolve(9_000, null, 'R', '333', 'none'), id: 1_800_000_000_000 }] };
+  const before: TimerStore = { ...emptyTimerStore(), sessions: [mine], activeId: mine.id };
+  const rows: ImportRow[] = [
+    { source: parsed.sessions[0], include: true, name: 'fresh', event: '333', destination: NEW_SESSION },
+    { source: parsed.sessions[0], include: true, name: '', event: '333', destination: mine.id },
+  ];
+
+  const done = applyImport(before, rows);
+  check(done.store.sessions.length === 2, 'the undo fixture imports into a new session and an existing one');
+  const undone = undoImport(done.store, done.results);
+  check(
+    JSON.stringify(undone.sessions) === JSON.stringify(before.sessions),
+    'undoing an import puts the sessions back exactly as they were',
+  );
+  check(undone.activeId === mine.id, 'and moves the active session off the one it removed');
+
+  // A solve timed after the import is not the import's to take back.
+  const later = { ...newSolve(11_000, null, 'U', '333', 'none'), id: mine.solves[0].id + 1 };
+  const grown: TimerStore = {
+    ...done.store,
+    sessions: done.store.sessions.map((session) => (
+      session.id === mine.id ? { ...session, solves: [...session.solves, later] } : session
+    )),
+  };
+  const kept = undoImport(grown, done.results).sessions.find((session) => session.id === mine.id);
+  check(
+    kept !== undefined && kept.solves.length === 2 && kept.solves.some((solve) => solve.id === later.id),
+    'a solve timed since the import survives its undo',
   );
 }
 
