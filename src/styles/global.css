@@ -850,6 +850,21 @@ textarea,
   /* Containing block for the stage and the tool dock, so both anchor to the
      whole frame rather than to whatever column happens to be left of them. */
   position: relative;
+  /* So the clock can be sized by the frame's width in `cqw`. The frame's width
+     never comes from its contents, so containing it changes nothing. */
+  container-type: inline-size;
+  /* The rail's measured width, set by the panel; 0 whenever there is no rail. */
+  --rail-w: 0px;
+  /* The stock size, capped so a face as long as "1:23.45" — about 3.5em —
+     still fits in the column the rail leaves. */
+  --clock-size: min(
+    calc(clamp(64px, 12vw, 240px) * var(--font-scale) * var(--clock-scale, 1)),
+    calc((100cqw - var(--rail-w) - 32px) / 3.5)
+  );
+  /* Half the width the clock needs kept clear: that same 3.5em face, or the
+     ao5 / ao12 line under it when that is the wider of the two. Fixed rather
+     than measured, so the clock doesn't move when its text changes length. */
+  --clock-half: max(calc(var(--clock-size) * 1.75), calc(165px * var(--font-scale)));
 }
 
 /* What a shortcut just did, when nothing else on screen says so — a deleted
@@ -1349,7 +1364,12 @@ textarea,
 /* Out of flow and covering the whole frame, so the clock's centre is the
    window's centre — not the centre of the space the rail leaves, and not the
    space under the scramble bar. It therefore does not shift when either of
-   those hides for a solve, or when they're switched off in settings. */
+   those hides for a solve, or when they're switched off in settings.
+
+   Until the window is too narrow for that: then the left padding grows by just
+   enough to keep the clock clear of the rail, sliding it right until at most it
+   is centred on the column beside the rail. Nothing in it reads the clock's
+   text, so a solve starting or ending never moves it. */
 .timer-stage {
   position: absolute;
   inset: 0;
@@ -1359,6 +1379,11 @@ textarea,
   justify-content: center;
   gap: 10px;
   padding: 20px;
+  padding-left: clamp(
+    20px,
+    calc(2 * (var(--rail-w) + 16px + var(--clock-half)) - 100cqw + 20px),
+    calc(var(--rail-w) + 20px)
+  );
   /* The stage spans the rail, so clicks have to fall through it. Its own
      children take them back. */
   pointer-events: none;
@@ -1431,7 +1456,8 @@ textarea,
 .clock {
   font-family: var(--font-timer);
   font-variant-numeric: tabular-nums;
-  font-size: calc(clamp(64px, 12vw, 240px) * var(--font-scale) * var(--clock-scale, 1));
+  /* Set on .timer-frame, where the room beside the rail is known. */
+  font-size: var(--clock-size);
   font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1;

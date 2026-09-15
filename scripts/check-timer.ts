@@ -15,6 +15,10 @@ import { formatTime } from '../src/timer/format';
 import { averageText } from '../src/timer/averageText';
 import { sessionCsv, solvesCsv } from '../src/data/backup';
 import { newSession, type Solve } from '../src/timer/types';
+import {
+  BESIDE_MIN, FIT_GAP, STACK_GAP, clearOf, fitPanel, overlaps, type FrameBox, type PanelBox,
+} from '../src/timer/panelFit';
+import { PREVIEW_MARGIN } from '../src/timer/settings';
 
 const failures: string[] = [];
 
@@ -164,6 +168,75 @@ check(
 check(lines[6].includes('(11.02)'), 'the best of the five is bracketed as trimmed');
 check(lines[4].includes('(15.01)'), 'the worst of the five is bracketed as trimmed');
 check(lines[3].includes("R U R' scramble 1"), 'each line carries its own scramble');
+
+// ---- the floating panels, fitted to the room beside the rail ----
+
+// The stock sizes and places, on a 13" laptop's half-screen window and on a
+// full HD one. The rail is 329 wide at stock text size, not its 300px basis.
+const PREVIEW: PanelBox = { width: 320, height: 268, right: 16, bottom: 16 };
+const GRAPH: PanelBox = { width: 320, height: 150, right: 348, bottom: 16 };
+const WIDE: FrameBox = { width: 1920, height: 1000, left: 329 };
+const NARROW: FrameBox = { width: 860, height: 704, left: 329 };
+
+check(
+  JSON.stringify(fitPanel(PREVIEW, WIDE)) === JSON.stringify(PREVIEW),
+  'a panel with room to spare is drawn exactly as saved',
+);
+check(
+  fitPanel(GRAPH, { width: 0, height: 0, left: 0 }) === GRAPH,
+  'an unmeasured frame passes the panel through untouched',
+);
+
+const squeezed = fitPanel({ ...PREVIEW, width: 680 }, NARROW);
+check(
+  squeezed.width === NARROW.width - NARROW.left - 2 * FIT_GAP,
+  `a panel wider than the column shrinks to it, got ${squeezed.width}`,
+);
+const graphNarrow = fitPanel(GRAPH, NARROW);
+check(
+  NARROW.width - graphNarrow.right - graphNarrow.width >= NARROW.left,
+  'a panel is never drawn over the rail',
+);
+check(graphNarrow.width === GRAPH.width, 'a panel that fits is moved, not shrunk');
+const high = fitPanel({ ...GRAPH, bottom: 4000 }, NARROW);
+check(high.bottom + high.height <= NARROW.height, 'a panel never rises above the top of the frame');
+check(
+  fitPanel({ ...PREVIEW, right: PREVIEW_MARGIN }, NARROW).right === PREVIEW_MARGIN,
+  'a panel can still be tucked off the right edge',
+);
+
+// The graph's stock place is beside the preview, which a narrow window has no
+// room for: kept off the rail, it lands on the preview instead.
+const previewNarrow = fitPanel(PREVIEW, NARROW);
+check(overlaps(graphNarrow, previewNarrow), 'the narrow window pushes the graph onto the preview');
+const beside = clearOf(graphNarrow, previewNarrow, GRAPH, PREVIEW, NARROW);
+check(!overlaps(beside, previewNarrow), 'an overlap the window caused is undone');
+check(
+  beside.bottom === previewNarrow.bottom && beside.width >= BESIDE_MIN && beside.width < GRAPH.width,
+  `with room for it, the graph goes beside the preview, narrowed; got ${JSON.stringify(beside)}`,
+);
+check(
+  NARROW.width - beside.right - beside.width >= NARROW.left,
+  'and narrowing it keeps it off the rail',
+);
+
+// Thirty pixels less and beside would be too thin to read, so it goes above.
+const NARROWER: FrameBox = { ...NARROW, width: 830 };
+const previewNarrower = fitPanel(PREVIEW, NARROWER);
+const stacked = clearOf(fitPanel(GRAPH, NARROWER), previewNarrower, GRAPH, PREVIEW, NARROWER);
+check(!overlaps(stacked, previewNarrower), 'too narrow to sit beside, the graph still clears the preview');
+check(
+  stacked.bottom === previewNarrower.bottom + previewNarrower.height + STACK_GAP
+    && stacked.width === GRAPH.width,
+  `it stacks just above the preview at its own width; got ${JSON.stringify(stacked)}`,
+);
+
+const chosen = { ...GRAPH, right: 100, bottom: 100 };
+const chosenFit = fitPanel(chosen, NARROW);
+check(
+  clearOf(chosenFit, previewNarrow, chosen, PREVIEW, NARROW) === chosenFit,
+  'an overlap the user dragged into is left alone',
+);
 
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);

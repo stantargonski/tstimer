@@ -19,6 +19,7 @@ import StatsPanel from './StatsPanel'
 import CompBar from './CompBar'
 import AverageDetail from './AverageDetail'
 import type { AverageView } from './averageText'
+import { clearOf, fitPanel, type FrameBox, type PanelBox } from './panelFit'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { DEFAULT_TIMER_SETTINGS, type TimerSettings } from './settings'
 import { average, meanExec, meanMemo } from './stats'
@@ -105,6 +106,40 @@ export default function TimerPanel({
   const [flash, setFlash] = useState<{ text: string; at: number } | null>(null)
   const eventSelect = useRef<HTMLSelectElement>(null)
   const sessionSelect = useRef<HTMLSelectElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLDivElement>(null)
+  /**
+   * The frame's size, and how much of it the rail takes on the left.
+   *
+   * Measured rather than read off the stylesheet: the rail's 300px is only a
+   * starting point, and its buttons and the text size both push it wider. It is
+   * 0 when the rail is stowed, and when the narrow-window rule hides it.
+   */
+  const [frame, setFrame] = useState<FrameBox>({ width: 0, height: 0, left: 0 })
+
+  // A resize observer rather than the window's resize event, because stowing the
+  // rail changes the room without the window changing at all. It only fires on a
+  // change of size, so a running clock costs it nothing.
+  useEffect(() => {
+    const outer = frameRef.current
+    const main = mainRef.current
+    if (!outer || !main) return
+    const observer = new ResizeObserver(() => {
+      const width = outer.clientWidth
+      const height = outer.clientHeight
+      // The centre column runs to the frame's right edge, so whatever it
+      // doesn't cover is the rail.
+      const left = width - main.offsetWidth
+      setFrame((prev) => (
+        prev.width === width && prev.height === height && prev.left === left
+          ? prev
+          : { width, height, left }
+      ))
+    })
+    observer.observe(outer)
+    observer.observe(main)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!flash) return
@@ -482,15 +517,38 @@ export default function TimerPanel({
 
   const railShown = (settings.showSolveList || settings.showStats) && !settings.railStowed
 
+  // Where the two floating panels are drawn: where they were saved, fitted to the
+  // room beside the rail. Nothing here is written back — see panelFit.
+  const storedPreview: PanelBox = {
+    width: settings.previewWidth,
+    height: settings.previewHeight,
+    right: settings.previewRight,
+    bottom: settings.previewBottom,
+  }
+  const storedGraph: PanelBox = {
+    width: settings.graphWidth,
+    height: settings.graphHeight,
+    right: settings.graphRight,
+    bottom: settings.graphBottom,
+  }
+  const previewBox = fitPanel(storedPreview, frame)
+  const fittedGraph = fitPanel(storedGraph, frame)
+  const graphBox = previewShown
+    ? clearOf(fittedGraph, previewBox, storedGraph, storedPreview, frame)
+    : fittedGraph
+
   return (
     <div
+      ref={frameRef}
       className={solving ? 'timer-frame solving' : 'timer-frame'}
       // Multipliers rather than sizes: the stylesheet still decides how the
       // clock and the scramble scale with the window, and these only say by how
-      // much more or less than stock.
+      // much more or less than stock. The rail's width is what the stylesheet
+      // keeps the clock clear of.
       style={{
         '--clock-scale': settings.clockScale / 100,
         '--scramble-scale': settings.scrambleScale / 100,
+        '--rail-w': `${frame.left}px`,
       } as CSSProperties}
     >
       {/* Collapsed, the rail is gone rather than narrowed — a 22px column of
@@ -600,7 +658,7 @@ export default function TimerPanel({
         </aside>
       )}
 
-      <div className="timer-main">
+      <div ref={mainRef} className="timer-main">
         {settings.showScramble && (
           <ScrambleBanner
             scramble={scramble}
@@ -744,10 +802,11 @@ export default function TimerPanel({
           <ScramblePreview
             event={event}
             scramble={scramble}
-            width={settings.previewWidth}
-            height={settings.previewHeight}
-            right={settings.previewRight}
-            bottom={settings.previewBottom}
+            width={previewBox.width}
+            height={previewBox.height}
+            right={previewBox.right}
+            bottom={previewBox.bottom}
+            frame={frame}
             onResize={(previewWidth, previewHeight) =>
               onSettings({ ...settings, previewWidth, previewHeight })}
             onMove={(previewRight, previewBottom) =>
@@ -768,10 +827,11 @@ export default function TimerPanel({
             solves={solves}
             decimals={settings.decimals}
             span={settings.graphSpan}
-            width={settings.graphWidth}
-            height={settings.graphHeight}
-            right={settings.graphRight}
-            bottom={settings.graphBottom}
+            width={graphBox.width}
+            height={graphBox.height}
+            right={graphBox.right}
+            bottom={graphBox.bottom}
+            frame={frame}
             onSpan={(graphSpan) => onSettings({ ...settings, graphSpan })}
             onResize={(graphWidth, graphHeight) =>
               onSettings({ ...settings, graphWidth, graphHeight })}

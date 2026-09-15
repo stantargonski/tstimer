@@ -5,6 +5,7 @@ import type { WcaEvent } from './events'
 import type { Scramble } from './scramble'
 import { PREVIEW_MAX, PREVIEW_MIN } from './settings'
 import { useFloatingPanel } from './useFloatingPanel'
+import type { FrameBox } from './panelFit'
 
 interface ScramblePreviewProps {
   event: WcaEvent
@@ -13,6 +14,7 @@ interface ScramblePreviewProps {
   height: number
   right: number
   bottom: number
+  frame: FrameBox
   onResize: (width: number, height: number) => void
   onMove: (right: number, bottom: number) => void
   /** Back to the size and corner it ships at, after a drag has lost it. */
@@ -31,7 +33,7 @@ interface ScramblePreviewProps {
  * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
-  event, scramble, width, height, right, bottom, onResize, onMove, onReset,
+  event, scramble, width, height, right, bottom, frame, onResize, onMove, onReset,
 }: ScramblePreviewProps) {
   const size = event.size ?? 3
 
@@ -57,6 +59,7 @@ export default function ScramblePreview({
     maxWidth: PREVIEW_MAX,
     minHeight: PREVIEW_MIN,
     maxHeight: PREVIEW_MAX,
+    frame,
     onResize,
     onMove,
   })
