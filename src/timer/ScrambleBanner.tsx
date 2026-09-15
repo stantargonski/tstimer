@@ -14,12 +14,15 @@ interface ScrambleBannerProps {
   flat: boolean
   /** Monospaced, so the moves line up in columns. */
   mono: boolean
+  /** The row above the scramble — the event picker and last / next. Off leaves
+      the scramble alone on the bar. */
+  showHead?: boolean
   /** The event picker, rendered above the scramble. */
   children?: ReactNode
 }
 
 export default function ScrambleBanner({
-  scramble, canGoBack, onLast, onNext, action, flat, mono, children,
+  scramble, canGoBack, onLast, onNext, action, flat, mono, showHead = true, children,
 }: ScrambleBannerProps) {
   const [copied, setCopied] = useState(false)
 
@@ -51,13 +54,15 @@ export default function ScrambleBanner({
     <div className={flat ? 'scramble-bar flat' : 'scramble-bar'}>
       {/* The nav sits with the picker rather than beside the scramble: both
           decide what you are about to solve, and neither is the scramble. */}
-      <div className="scramble-head">
-        {children}
-        <div className="scramble-nav">
-          <button type="button" onClick={onLast} disabled={!canGoBack}>‹ last</button>
-          <button type="button" onClick={onNext}>next ›</button>
+      {showHead && (
+        <div className="scramble-head">
+          {children}
+          <div className="scramble-nav">
+            <button type="button" onClick={onLast} disabled={!canGoBack}>‹ last</button>
+            <button type="button" onClick={onNext}>next ›</button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="scramble-body">
         <button

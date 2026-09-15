@@ -1,5 +1,6 @@
 import { useRef, type PointerEvent } from 'react'
-import { clampPlace, type FrameBox } from './panelFit'
+import { boxOf, clampPlace, rectOf, type FrameBox } from './panelFit'
+import { snapMove, snapResize, type SnapOptions } from './panelSnap'
 
 interface FloatingPanelOptions {
   width: number
@@ -12,8 +13,14 @@ interface FloatingPanelOptions {
   maxHeight: number
   /** The room the panel is kept within — see panelFit. */
   frame: FrameBox
+  /** What it pulls to while held — see panelSnap. Absent means it pulls to nothing. */
+  snap?: SnapOptions
   onResize: (width: number, height: number) => void
   onMove: (right: number, bottom: number) => void
+}
+
+function clampSize(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)))
 }
 
 /**
@@ -30,14 +37,23 @@ interface FloatingPanelOptions {
  * window that shrinks under a panel is handled there too, at render, rather
  * than here by rewriting the saved position.
  *
- * The scramble preview and the session graph both use this, so the two can't
- * drift apart in how they behave under the pointer.
+ * Holding ⌥ / Alt places it freely, whatever the snap setting says.
+ *
+ * Every floating box uses this, so none of them can drift from the others in
+ * how it behaves under the pointer.
  */
 export function useFloatingPanel({
-  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, frame, onResize, onMove,
+  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, frame, snap,
+  onResize, onMove,
 }: FloatingPanelOptions) {
   const resizing = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
   const moving = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null)
+
+  /** The snap to apply to this pointer event, or null for a free one. */
+  function snapping(event: PointerEvent<HTMLElement>): SnapOptions | null {
+    if (!snap || !snap.enabled || frame.width === 0 || event.altKey) return null
+    return snap
+  }
 
   function startResize(down: PointerEvent<HTMLElement>) {
     down.preventDefault()
@@ -52,32 +68,55 @@ export function useFloatingPanel({
   }
 
   function onPointerMove(move: PointerEvent<HTMLElement>) {
+    const pulled = snapping(move)
     const size = resizing.current
     if (size) {
       // Dragging up and left makes it bigger, because the opposite corner is
       // the one that's pinned.
-      onResize(
-        Math.min(maxWidth, Math.max(minWidth, Math.round(size.width - (move.clientX - size.x)))),
-        Math.min(maxHeight, Math.max(minHeight, Math.round(size.height - (move.clientY - size.y)))),
-      )
+      let nextWidth = clampSize(size.width - (move.clientX - size.x), minWidth, maxWidth)
+      let nextHeight = clampSize(size.height - (move.clientY - size.y), minHeight, maxHeight)
+      if (pulled) {
+        const pinned = rectOf({ width, height, right, bottom }, frame)
+        const snapped = snapResize(
+          { ...pinned, left: pinned.right - nextWidth, top: pinned.bottom - nextHeight },
+          pulled.others,
+          frame,
+        )
+        nextWidth = clampSize(snapped.rect.right - snapped.rect.left, minWidth, maxWidth)
+        nextHeight = clampSize(snapped.rect.bottom - snapped.rect.top, minHeight, maxHeight)
+        pulled.onGuides({ guides: snapped.guides, matched: snapped.matched })
+      } else {
+        snap?.onGuides(null)
+      }
+      onResize(nextWidth, nextHeight)
       return
     }
 
     const from = moving.current
     if (!from) return
     // Right and bottom count inwards, so a drag right or down shrinks them.
-    const next = clampPlace(
+    let next = clampPlace(
       from.right - (move.clientX - from.x),
       from.bottom - (move.clientY - from.y),
       { width, height },
       frame,
     )
+    if (pulled) {
+      const snapped = snapMove(rectOf({ width, height, ...next }, frame), pulled.others, frame)
+      const box = boxOf(snapped.rect, frame)
+      next = clampPlace(box.right, box.bottom, { width, height }, frame)
+      pulled.onGuides({ guides: snapped.guides, matched: [] })
+    } else {
+      snap?.onGuides(null)
+    }
     onMove(next.right, next.bottom)
   }
 
   function onPointerUp(up: PointerEvent<HTMLElement>) {
+    const held = resizing.current !== null || moving.current !== null
     resizing.current = null
     moving.current = null
+    if (held) snap?.onGuides(null)
     // Checked rather than assumed: a drag started on a child bubbles its release
     // up to a parent that never held the capture.
     if (up.currentTarget.hasPointerCapture(up.pointerId)) {

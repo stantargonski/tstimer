@@ -1,4 +1,5 @@
 import { isEventId, type EventId } from './events';
+import type { PanelBox } from './panelFit';
 
 /** What the clock shows while a solve is actually running. */
 export type RunningDisplay = 'tenths' | 'seconds' | 'hidden';
@@ -47,6 +48,9 @@ export interface TimerSettings {
   /** The event dropdown above the scramble. Off leaves the scramble and its
       last / next buttons exactly where they were. */
   showEventPicker: boolean;
+  /** The whole row above the scramble: the event dropdown and last / next.
+      Off leaves the scramble itself on screen. */
+  showScrambleHead: boolean;
   showSolveList: boolean;
   showStats: boolean;
   showAverages: boolean;
@@ -101,6 +105,20 @@ export interface TimerSettings {
   graphHeight: number;
   graphRight: number;
   graphBottom: number;
+  /** The session stats and the solve list, taken out of the sidebar into boxes
+      of their own. The solve list floats as a compact version of itself. */
+  statsFloating: boolean;
+  listFloating: boolean;
+  /**
+   * Where the two floating sidebar parts were last put, or null for never. A
+   * box that has never been put anywhere is drawn at the top-left of the space
+   * beside the sidebar, worked out from the window it opens on — which a fixed
+   * default measured from the bottom-right corner could not be.
+   */
+  statsBox: PanelBox | null;
+  listBox: PanelBox | null;
+  /** Whether the floating boxes pull to edges and to each other's sizes. */
+  snapPanels: boolean;
   /** How many cubes a multi-blind attempt is for. */
   mbldCount: number;
   /**
@@ -143,6 +161,7 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   entryMode: 'timer',
   showScramble: true,
   showEventPicker: true,
+  showScrambleHead: true,
   showSolveList: true,
   showStats: true,
   showAverages: true,
@@ -168,6 +187,11 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   // both doesn't stack one on the other.
   graphRight: 348,
   graphBottom: 16,
+  statsFloating: false,
+  listFloating: false,
+  statsBox: null,
+  listBox: null,
+  snapPanels: true,
   mbldCount: 3,
   benchEvents: DEFAULT_BENCH_EVENTS,
   benchAo5Events: DEFAULT_BENCH_EVENTS,
@@ -191,6 +215,16 @@ export const GRAPH_MIN_WIDTH = 200;
 export const GRAPH_MAX_WIDTH = 680;
 export const GRAPH_MIN_HEIGHT = 90;
 export const GRAPH_MAX_HEIGHT = 480;
+
+/** How small and large the floating stats and solve list may be dragged. */
+export const FLOAT_MIN_WIDTH = 180;
+export const FLOAT_MAX_WIDTH = 680;
+export const FLOAT_MIN_HEIGHT = 100;
+export const FLOAT_MAX_HEIGHT = 900;
+
+/** The size a floating stats box and solve list open at. */
+export const STATS_FLOAT = { width: 260, height: 200 };
+export const LIST_FLOAT = { width: 260, height: 320 };
 
 export const MBLD_MIN = 2;
 export const MBLD_MAX = 60;
@@ -257,6 +291,7 @@ export function readTimerSettings(input: unknown): TimerSettings {
       entryMode: one(parsed.entryMode, ['timer', 'typed'], DEFAULT_TIMER_SETTINGS.entryMode),
       showScramble: bool(parsed.showScramble, true),
       showEventPicker: bool(parsed.showEventPicker, true),
+      showScrambleHead: bool(parsed.showScrambleHead, true),
       showSolveList: bool(parsed.showSolveList, true),
       showStats: bool(parsed.showStats, true),
       showAverages: bool(parsed.showAverages, true),
@@ -294,6 +329,11 @@ export function readTimerSettings(input: unknown): TimerSettings {
       ),
       graphRight: clamp(parsed.graphRight, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.graphRight),
       graphBottom: clamp(parsed.graphBottom, PREVIEW_MARGIN, 4000, DEFAULT_TIMER_SETTINGS.graphBottom),
+      statsFloating: bool(parsed.statsFloating, false),
+      listFloating: bool(parsed.listFloating, false),
+      statsBox: box(parsed.statsBox),
+      listBox: box(parsed.listBox),
+      snapPanels: bool(parsed.snapPanels, true),
       mbldCount: clamp(parsed.mbldCount, MBLD_MIN, MBLD_MAX, DEFAULT_TIMER_SETTINGS.mbldCount),
       benchEvents: bench,
       benchAo5Events: parsed.benchAo5Events === undefined
@@ -324,6 +364,24 @@ function events(value: unknown): EventId[] {
     if (out.length === BENCH_MAX) break;
   }
   return out;
+}
+
+/**
+ * A floating box's size and place out of an untrusted blob, or null — which is
+ * also what a box that was never moved is saved as. Any number that isn't one
+ * makes the whole box null rather than half of one: a box put back at the top
+ * of the column is a better answer than a box with no width.
+ */
+function box(value: unknown): PanelBox | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<Record<keyof PanelBox, unknown>>;
+  const read = {
+    width: clamp(raw.width, FLOAT_MIN_WIDTH, FLOAT_MAX_WIDTH, NaN),
+    height: clamp(raw.height, FLOAT_MIN_HEIGHT, FLOAT_MAX_HEIGHT, NaN),
+    right: clamp(raw.right, PREVIEW_MARGIN, 4000, NaN),
+    bottom: clamp(raw.bottom, PREVIEW_MARGIN, 4000, NaN),
+  };
+  return Object.values(read).every(Number.isFinite) ? read : null;
 }
 
 function bool(value: unknown, fallback: boolean): boolean {

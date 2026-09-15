@@ -4,6 +4,7 @@ import { graphSeries } from './charts/sessionGraph'
 import { linePath, niceStep } from './charts/scale'
 import { useFloatingPanel } from './useFloatingPanel'
 import type { FrameBox } from './panelFit'
+import type { SnapOptions } from './panelSnap'
 import {
   GRAPH_MAX_HEIGHT, GRAPH_MAX_WIDTH, GRAPH_MIN_HEIGHT, GRAPH_MIN_WIDTH, GRAPH_SPANS,
   type GraphSpan,
@@ -26,6 +27,9 @@ interface SessionGraphProps {
   right: number
   bottom: number
   frame: FrameBox
+  snap: SnapOptions
+  /** Lit while another box is being resized to its size. */
+  highlight: boolean
   onSpan: (span: GraphSpan) => void
   onResize: (width: number, height: number) => void
   onMove: (right: number, bottom: number) => void
@@ -43,7 +47,8 @@ interface SessionGraphProps {
  * for a title bar to hold it by.
  */
 export default function SessionGraph({
-  solves, decimals, span, width, height, right, bottom, frame, onSpan, onResize, onMove,
+  solves, decimals, span, width, height, right, bottom, frame, snap, highlight,
+  onSpan, onResize, onMove,
 }: SessionGraphProps) {
   const panel = useFloatingPanel({
     width,
@@ -51,6 +56,7 @@ export default function SessionGraph({
     right,
     bottom,
     frame,
+    snap,
     minWidth: GRAPH_MIN_WIDTH,
     maxWidth: GRAPH_MAX_WIDTH,
     minHeight: GRAPH_MIN_HEIGHT,
@@ -132,7 +138,7 @@ export default function SessionGraph({
 
   return (
     <div
-      className="session-graph"
+      className={highlight ? 'session-graph size-match' : 'session-graph'}
       style={{ width, height, right, bottom }}
       title="drag to move"
       onPointerDown={(down) => {

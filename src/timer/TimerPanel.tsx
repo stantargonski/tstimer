@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTimer } from './useTimer'
 import { useHotkeys } from '../keys/useHotkeys'
 import { keyHint, withHint, type Keymap } from '../keys/keymap'
@@ -19,9 +19,16 @@ import StatsPanel from './StatsPanel'
 import CompBar from './CompBar'
 import AverageDetail from './AverageDetail'
 import type { AverageView } from './averageText'
-import { clearOf, fitPanel, type FrameBox, type PanelBox } from './panelFit'
+import FloatingBox from './FloatingBox'
+import {
+  FIT_GAP, STACK_GAP, clearOf, fitPanel, floatAt, rectOf,
+  type FrameBox, type PanelBox, type Rect,
+} from './panelFit'
+import type { SnapGuides, SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
-import { DEFAULT_TIMER_SETTINGS, type TimerSettings } from './settings'
+import {
+  DEFAULT_TIMER_SETTINGS, GRAPH_MIN_HEIGHT, LIST_FLOAT, STATS_FLOAT, type TimerSettings,
+} from './settings'
 import { average, meanExec, meanMemo } from './stats'
 import { formatOf, resultOf, suggestTarget } from './comp'
 import { downloadText, sessionCsv, slug, stamp } from '../data/backup'
@@ -51,6 +58,11 @@ interface TimerPanelProps {
   /** Told whenever a key press belongs to the timer rather than to a shortcut:
       mid-solve, inspecting, or with a sheet open. */
   onBusy?: (busy: boolean) => void
+}
+
+function sameRect(a: Rect | null, b: Rect | null): boolean {
+  if (a === null || b === null) return a === b
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom
 }
 
 /** Whether there is text selected that ⌘C should copy instead of the scramble. */
@@ -108,36 +120,68 @@ export default function TimerPanel({
   const sessionSelect = useRef<HTMLSelectElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLDivElement>(null)
+  const clockRef = useRef<HTMLDivElement>(null)
+  const underRef = useRef<HTMLDivElement>(null)
+  /** Whether the clock is running, for the observer below — which is not a
+      render, and so can't read `timing` itself. */
+  const timingRef = useRef(false)
   /**
-   * The frame's size, and how much of it the rail takes on the left.
+   * The frame's size, how much of it the rail takes on the left, and how far
+   * down the scramble bar reaches.
    *
    * Measured rather than read off the stylesheet: the rail's 300px is only a
    * starting point, and its buttons and the text size both push it wider. It is
-   * 0 when the rail is stowed, and when the narrow-window rule hides it.
+   * 0 when the rail is stowed, when nothing is docked in it, and when the
+   * narrow-window rule hides it.
    */
-  const [frame, setFrame] = useState<FrameBox>({ width: 0, height: 0, left: 0 })
+  const [measured, setMeasured] = useState<FrameBox>({ width: 0, height: 0, left: 0, top: 0 })
+  /** The clock, its delta and the lines under it, in frame coordinates — what
+      a floating panel below it is shortened to stay clear of. */
+  const [keepOut, setKeepOut] = useState<Rect | null>(null)
+  /** The lines a held panel has snapped to, drawn across the frame. */
+  const [guides, setGuides] = useState<SnapGuides | null>(null)
 
   // A resize observer rather than the window's resize event, because stowing the
   // rail changes the room without the window changing at all. It only fires on a
-  // change of size, so a running clock costs it nothing.
+  // change of size, so a running clock costs it next to nothing.
   useEffect(() => {
     const outer = frameRef.current
     const main = mainRef.current
-    if (!outer || !main) return
+    const head = headRef.current
+    const clock = clockRef.current
+    const under = underRef.current
+    if (!outer || !main || !head || !clock || !under) return
     const observer = new ResizeObserver(() => {
       const width = outer.clientWidth
       const height = outer.clientHeight
       // The centre column runs to the frame's right edge, so whatever it
       // doesn't cover is the rail.
       const left = width - main.offsetWidth
-      setFrame((prev) => (
-        prev.width === width && prev.height === height && prev.left === left
+      const top = head.offsetHeight
+      setMeasured((prev) => (
+        prev.width === width && prev.height === height && prev.left === left && prev.top === top
           ? prev
-          : { width, height, left }
+          : { width, height, left, top }
       ))
+
+      // Held still while the clock runs. The averages leave with the first tick
+      // and come back with the last, and a panel that grew into the gap between
+      // them would be seen doing it as the interface fades back in.
+      if (timingRef.current) return
+      const base = outer.getBoundingClientRect()
+      const parts = [...outer.querySelectorAll('.clock, .clock-delta, .clock-under')]
+        .map((part) => part.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+      const next = parts.length === 0 ? null : {
+        left: Math.round(Math.min(...parts.map((rect) => rect.left)) - base.left),
+        top: Math.round(Math.min(...parts.map((rect) => rect.top)) - base.top),
+        right: Math.round(Math.max(...parts.map((rect) => rect.right)) - base.left),
+        bottom: Math.round(Math.max(...parts.map((rect) => rect.bottom)) - base.top),
+      }
+      setKeepOut((prev) => (sameRect(prev, next) ? prev : next))
     })
-    observer.observe(outer)
-    observer.observe(main)
+    for (const element of [outer, main, head, clock, under]) observer.observe(element)
     return () => observer.disconnect()
   }, [])
 
@@ -321,6 +365,12 @@ export default function TimerPanel({
   )
 
   const timing = phase === 'running' || phase === 'memo'
+
+  // A layout effect, so it is set before the observer sees the averages go:
+  // that happens in the same frame the clock starts.
+  useLayoutEffect(() => {
+    timingRef.current = timing
+  }, [timing])
   // Inspection counts as solving for this purpose, and it is the same fifteen
   // seconds either way: you are looking at the cube, and the scramble you are
   // no longer allowed to consult is the last thing that should still be up.
@@ -405,6 +455,28 @@ export default function TimerPanel({
       : `inspection ${inspection ? 'on' : 'off'}`)
   }
 
+  // What is in the sidebar and what floats. A part that is switched off is in
+  // neither, and the sidebar stands only while something is still docked in it.
+  const statsDocked = settings.showStats && !settings.statsFloating
+  const listDocked = settings.showSolveList && !settings.listFloating
+  const statsFloat = settings.showStats && settings.statsFloating
+  const listFloat = settings.showSolveList && settings.listFloating
+  const anyDocked = statsDocked || listDocked
+  const railShown = anyDocked && !settings.railStowed
+  /** Where the session picker and the tools live: with the solve list, wherever
+      it is — or with the stats, when the list is switched off. */
+  const toolsIn: 'rail' | 'list' | 'stats' = settings.showSolveList
+    ? (listFloat ? 'list' : 'rail')
+    : (statsFloat ? 'stats' : 'rail')
+
+  /**
+   * The measured frame, with no rail in it whenever the settings say there is
+   * none. Whether the rail is there is known now; only its width has to wait for
+   * the observer. Without this, floating the last part out of the sidebar drew
+   * one frame with every box still kept clear of a rail that had already gone.
+   */
+  const frame: FrameBox = railShown ? measured : { ...measured, left: 0 }
+
   // The three rail switches, shared by their buttons and their keys.
   function toggleComp() {
     if (openRound) setRound(null)
@@ -420,6 +492,22 @@ export default function TimerPanel({
 
   function toggleGraph() {
     onSettings({ ...settings, showGraph: !settings.showGraph })
+  }
+
+  /** The solve list into a box of its own, or back into the sidebar — which
+      comes out of hiding to take it, or the list would dock into nothing. */
+  function toggleListFloat(): false | void {
+    if (!settings.showSolveList) return false
+    const listFloating = !settings.listFloating
+    onSettings({ ...settings, listFloating, railStowed: listFloating && settings.railStowed })
+    say(listFloating ? 'solve list floating' : 'solve list back in the sidebar')
+  }
+
+  function toggleStatsFloat(): false | void {
+    if (!settings.showStats) return false
+    const statsFloating = !settings.statsFloating
+    onSettings({ ...settings, statsFloating, railStowed: statsFloating && settings.railStowed })
+    say(statsFloating ? 'stats floating' : 'stats back in the sidebar')
   }
 
   useHotkeys(keymap, {
@@ -438,14 +526,21 @@ export default function TimerPanel({
     openSession: () => openPicker(sessionSelect.current),
     toggleInspection,
     toggleRail: () => {
-      // No rail to stow when both of the things it holds are switched off.
-      if (!settings.showSolveList && !settings.showStats) return false
+      // No rail to stow when nothing is docked in it.
+      if (!anyDocked) return false
       onSettings({ ...settings, railStowed: !settings.railStowed })
     },
-    toggleScramble: () => onSettings({ ...settings, showScramble: !settings.showScramble }),
+    // The row above the scramble, not the bar: the scramble is the one part of
+    // it a solve can't do without.
+    toggleScramble: () => {
+      if (!settings.showScramble) return false
+      onSettings({ ...settings, showScrambleHead: !settings.showScrambleHead })
+    },
     toggleComp,
     togglePreview,
     toggleGraph,
+    toggleListFloat,
+    toggleStatsFloat,
   }, keymap.enabled && !busy)
 
   /**
@@ -515,10 +610,9 @@ export default function TimerPanel({
       to size the box to it. */
   const entryFace = digitsFace(entry, settings.typedDecimals)
 
-  const railShown = (settings.showSolveList || settings.showStats) && !settings.railStowed
-
-  // Where the two floating panels are drawn: where they were saved, fitted to the
-  // room beside the rail. Nothing here is written back — see panelFit.
+  // Where the floating panels are drawn: where they were saved, fitted to the
+  // room beside the rail and kept under the clock. Nothing here is written
+  // back — see panelFit.
   const storedPreview: PanelBox = {
     width: settings.previewWidth,
     height: settings.previewHeight,
@@ -531,11 +625,107 @@ export default function TimerPanel({
     right: settings.graphRight,
     bottom: settings.graphBottom,
   }
-  const previewBox = fitPanel(storedPreview, frame)
-  const fittedGraph = fitPanel(storedGraph, frame)
+  const graphFit = { keepOut, minHeight: GRAPH_MIN_HEIGHT }
+  const previewBox = fitPanel(storedPreview, frame, { keepOut, minHeight: 140 })
+  const fittedGraph = fitPanel(storedGraph, frame, graphFit)
   const graphBox = previewShown
-    ? clearOf(fittedGraph, previewBox, storedGraph, storedPreview, frame)
+    ? clearOf(fittedGraph, previewBox, storedGraph, storedPreview, frame, graphFit)
     : fittedGraph
+
+  // The two sidebar parts, floating. Never put anywhere, they open at the
+  // top-left of the space beside the sidebar, the list under the stats.
+  const statsBox = fitPanel(
+    settings.statsBox
+      ?? floatAt(frame, STATS_FLOAT.width, STATS_FLOAT.height, frame.top + FIT_GAP),
+    frame,
+    { keepOut, minHeight: 110 },
+  )
+  const listTop = statsFloat ? rectOf(statsBox, frame).bottom + STACK_GAP : frame.top + FIT_GAP
+  const listBox = fitPanel(
+    settings.listBox ?? floatAt(frame, LIST_FLOAT.width, LIST_FLOAT.height, listTop),
+    frame,
+    { keepOut, minHeight: 140 },
+  )
+
+  // Every box on screen that another can snap to.
+  const floating: { id: string; box: PanelBox }[] = [
+    ...(previewShown ? [{ id: 'preview', box: previewBox }] : []),
+    ...(settings.showGraph ? [{ id: 'graph', box: graphBox }] : []),
+    ...(statsFloat ? [{ id: 'stats', box: statsBox }] : []),
+    ...(listFloat ? [{ id: 'list', box: listBox }] : []),
+  ]
+
+  function snapFor(id: string): SnapOptions {
+    return {
+      enabled: settings.snapPanels,
+      others: floating
+        .filter((item) => item.id !== id)
+        .map((item) => ({ id: item.id, rect: rectOf(item.box, frame) })),
+      onGuides: setGuides,
+    }
+  }
+
+  /** Whether the box being resized has just matched this one's size. */
+  const matched = (id: string) => guides?.matched.includes(id) ?? false
+
+  // Rendered in one place at a time — the rail, or the floating box that took it.
+  const sessionPicker = (
+    <SessionPicker
+      sessions={store.sessions}
+      activeId={store.activeId}
+      onSelect={(id) => setStore((prev) => ({ ...prev, activeId: id }))}
+      onCreate={createSession}
+      onRename={(name) => updateActive((item) => ({ ...item, name }))}
+      onDelete={deleteSession}
+      onExport={exportSession}
+      selectRef={sessionSelect}
+    />
+  )
+
+  /** The three switches for the whole timer: named in the sidebar, bare icons
+      in a floating box, where there isn't room for the names. */
+  function tools(compact: boolean) {
+    // All three are switches: pressing one again puts back what the first
+    // press did, and the lit state says which way it will go.
+    return (
+      <>
+        <button
+          type="button"
+          className="rail-tool"
+          aria-pressed={openRound !== null}
+          aria-label="comp sim"
+          title={withHint('comp sim', keymap, 'toggleComp')}
+          onClick={toggleComp}
+        >
+          🏁{compact ? '' : ' comp sim'}
+        </button>
+        <button
+          type="button"
+          className="rail-tool"
+          aria-pressed={previewShown}
+          aria-label="scramble preview"
+          title={withHint(
+            bldClosed ? 'opens for this scramble only' : 'scramble preview', keymap, 'togglePreview',
+          )}
+          onClick={togglePreview}
+        >
+          🧊{compact ? '' : ' preview'}
+        </button>
+        {/* Draws whichever session is picked, so switching sessions is all it
+            takes to look at another one. */}
+        <button
+          type="button"
+          className="rail-tool"
+          aria-pressed={settings.showGraph}
+          aria-label="session graph"
+          title={withHint('session graph', keymap, 'toggleGraph')}
+          onClick={toggleGraph}
+        >
+          📈{compact ? '' : ' graph'}
+        </button>
+      </>
+    )
+  }
 
   return (
     <div
@@ -554,7 +744,7 @@ export default function TimerPanel({
       {/* Collapsed, the rail is gone rather than narrowed — a 22px column of
           nothing is worse than either state. The handle below is what brings it
           back, and it is deliberately the only thing left of it. */}
-      {!railShown && (settings.showSolveList || settings.showStats) && (
+      {!railShown && anyDocked && (
         <button
           type="button"
           className="rail-open"
@@ -570,8 +760,17 @@ export default function TimerPanel({
           it does rather than only as long as the solve list. */}
       {railShown && (
         <aside className={settings.flatSidebar ? 'timer-rail flat' : 'timer-rail'}>
-          {settings.showStats && (
+          {statsDocked && (
             <div className="rail-stats">
+              <button
+                type="button"
+                className="rail-icon stats-detach"
+                aria-label="float the session stats"
+                title={withHint('float the stats', keymap, 'toggleStatsFloat')}
+                onClick={toggleStatsFloat}
+              >
+                ⧉
+              </button>
               <StatsPanel
                 solves={solves}
                 decimals={settings.decimals}
@@ -592,19 +791,21 @@ export default function TimerPanel({
             >
               ‹
             </button>
-            <SessionPicker
-              sessions={store.sessions}
-              activeId={store.activeId}
-              onSelect={(id) => setStore((prev) => ({ ...prev, activeId: id }))}
-              onCreate={createSession}
-              onRename={(name) => updateActive((item) => ({ ...item, name }))}
-              onDelete={deleteSession}
-              onExport={exportSession}
-              selectRef={sessionSelect}
-            />
+            {toolsIn === 'rail' && sessionPicker}
+            {listDocked && (
+              <button
+                type="button"
+                className="rail-icon"
+                aria-label="float the solve list"
+                title={withHint('float the solve list', keymap, 'toggleListFloat')}
+                onClick={toggleListFloat}
+              >
+                ⧉
+              </button>
+            )}
           </div>
 
-          {settings.showSolveList && (
+          {listDocked && (
             <div className="rail-list">
               <SolveList
                 solves={solves}
@@ -620,45 +821,12 @@ export default function TimerPanel({
           {/* Pinned to the foot of the rail: both are switches for the whole
               timer, and putting them here keeps them still while the list
               above them grows. */}
-          <div className="rail-tools">
-            {/* Both are switches: pressing one again puts back what the first
-                press did, and the lit state says which way it will go. */}
-            <button
-              type="button"
-              className="rail-tool"
-              aria-pressed={openRound !== null}
-              title={withHint('comp sim', keymap, 'toggleComp')}
-              onClick={toggleComp}
-            >
-              🏁 comp sim
-            </button>
-            <button
-              type="button"
-              className="rail-tool"
-              aria-pressed={previewShown}
-              title={withHint(
-                bldClosed ? 'opens for this scramble only' : 'scramble preview', keymap, 'togglePreview',
-              )}
-              onClick={togglePreview}
-            >
-              🧊 preview
-            </button>
-            {/* Draws whichever session is picked above, so switching sessions
-                is all it takes to look at another one. */}
-            <button
-              type="button"
-              className="rail-tool"
-              aria-pressed={settings.showGraph}
-              title={withHint('session graph', keymap, 'toggleGraph')}
-              onClick={toggleGraph}
-            >
-              📈 graph
-            </button>
-          </div>
+          {toolsIn === 'rail' && <div className="rail-tools">{tools(false)}</div>}
         </aside>
       )}
 
       <div ref={mainRef} className="timer-main">
+        <div ref={headRef} className="timer-head">
         {settings.showScramble && (
           <ScrambleBanner
             scramble={scramble}
@@ -668,6 +836,7 @@ export default function TimerPanel({
             action={settings.scrambleClick}
             flat={settings.flatScramble}
             mono={settings.monoScramble}
+            showHead={settings.showScrambleHead}
           >
             {settings.showEventPicker && (
               <EventPicker value={session.event} onChange={setEvent} selectRef={eventSelect} />
@@ -696,11 +865,12 @@ export default function TimerPanel({
             />
           </div>
         )}
+        </div>
 
         {/* The clock lives in the stage rather than in this column, so it centres
             on the window rather than on the space the rail leaves. */}
         <div className="timer-stage">
-          <div className="stage-clock">
+          <div ref={clockRef} className="stage-clock">
             {/* The delta hangs off the clock rather than sitting beside it in
                 flow: it is out of the normal flow entirely, so the clock's
                 centre is the window's centre whether or not there is a gap to
@@ -744,7 +914,7 @@ export default function TimerPanel({
                 would be centred along with the clock, so the clock would sit
                 half their height above the window's middle and jump back down
                 every time they hid for a solve. */}
-            <div className="clock-under">
+            <div ref={underRef} className="clock-under">
               {/* The session's mean memo and mean exec, not the last solve's
                   split — which is the half of a blindfolded solve you are
                   actually training, and the one figure the averages below
@@ -807,6 +977,8 @@ export default function TimerPanel({
             right={previewBox.right}
             bottom={previewBox.bottom}
             frame={frame}
+            snap={snapFor('preview')}
+            highlight={matched('preview')}
             onResize={(previewWidth, previewHeight) =>
               onSettings({ ...settings, previewWidth, previewHeight })}
             onMove={(previewRight, previewBottom) =>
@@ -832,6 +1004,8 @@ export default function TimerPanel({
             right={graphBox.right}
             bottom={graphBox.bottom}
             frame={frame}
+            snap={snapFor('graph')}
+            highlight={matched('graph')}
             onSpan={(graphSpan) => onSettings({ ...settings, graphSpan })}
             onResize={(graphWidth, graphHeight) =>
               onSettings({ ...settings, graphWidth, graphHeight })}
@@ -839,7 +1013,66 @@ export default function TimerPanel({
               onSettings({ ...settings, graphRight, graphBottom })}
           />
         )}
+
+        {/* Held back until the frame is measured: a box that has never been put
+            anywhere is placed from the frame's size, which is 0 until then. */}
+        {frame.width > 0 && statsFloat && (
+          <FloatingBox
+            className="stats-float"
+            title="stats"
+            box={statsBox}
+            frame={frame}
+            snap={snapFor('stats')}
+            highlight={matched('stats')}
+            onBox={(next) => onSettings({ ...settings, statsBox: next })}
+            onDock={toggleStatsFloat}
+            head={toolsIn === 'stats' ? sessionPicker : undefined}
+            foot={toolsIn === 'stats' ? tools(true) : undefined}
+          >
+            <StatsPanel
+              solves={solves}
+              decimals={settings.decimals}
+              event={event}
+              sessionId={session.id}
+              onOpenAverage={setDetail}
+            />
+          </FloatingBox>
+        )}
+
+        {frame.width > 0 && listFloat && (
+          <FloatingBox
+            className="list-float"
+            title="solves"
+            box={listBox}
+            frame={frame}
+            snap={snapFor('list')}
+            highlight={matched('list')}
+            onBox={(next) => onSettings({ ...settings, listBox: next })}
+            onDock={toggleListFloat}
+            head={sessionPicker}
+            foot={tools(true)}
+          >
+            <SolveList
+              solves={solves}
+              sessionId={session.id}
+              decimals={settings.decimals}
+              onPenalty={setPenalty}
+              onDelete={deleteSolve}
+              onOpenAverage={setDetail}
+              compact
+            />
+          </FloatingBox>
+        )}
       </div>
+
+      {/* Only while a box is held and has landed on something. */}
+      {guides?.guides.map((guide) => (
+        <div
+          key={`${guide.axis}${guide.at}`}
+          className={`snap-guide ${guide.axis}`}
+          style={guide.axis === 'x' ? { left: guide.at } : { top: guide.at }}
+        />
+      ))}
 
       {detail && (
         <AverageDetail

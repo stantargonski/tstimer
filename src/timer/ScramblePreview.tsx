@@ -6,6 +6,7 @@ import type { Scramble } from './scramble'
 import { PREVIEW_MAX, PREVIEW_MIN } from './settings'
 import { useFloatingPanel } from './useFloatingPanel'
 import type { FrameBox } from './panelFit'
+import type { SnapOptions } from './panelSnap'
 
 interface ScramblePreviewProps {
   event: WcaEvent
@@ -15,6 +16,9 @@ interface ScramblePreviewProps {
   right: number
   bottom: number
   frame: FrameBox
+  snap: SnapOptions
+  /** Lit while another box is being resized to its size. */
+  highlight: boolean
   onResize: (width: number, height: number) => void
   onMove: (right: number, bottom: number) => void
   /** Back to the size and corner it ships at, after a drag has lost it. */
@@ -33,7 +37,7 @@ interface ScramblePreviewProps {
  * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
-  event, scramble, width, height, right, bottom, frame, onResize, onMove, onReset,
+  event, scramble, width, height, right, bottom, frame, snap, highlight, onResize, onMove, onReset,
 }: ScramblePreviewProps) {
   const size = event.size ?? 3
 
@@ -60,12 +64,16 @@ export default function ScramblePreview({
     minHeight: PREVIEW_MIN,
     maxHeight: PREVIEW_MAX,
     frame,
+    snap,
     onResize,
     onMove,
   })
 
   return (
-    <div className="scramble-preview" style={{ width, height, right, bottom }}>
+    <div
+      className={highlight ? 'scramble-preview size-match' : 'scramble-preview'}
+      style={{ width, height, right, bottom }}
+    >
       <button
         type="button"
         className="preview-grip"

@@ -43,6 +43,8 @@ interface SolveListProps {
     onDelete: (id:number) => void
     /** Opens the solves behind one row's ao5 or ao12. */
     onOpenAverage?: (view: AverageView) => void
+    /** The floating list: #, time and ao5, in tighter rows. */
+    compact?: boolean
 }
 
 /**
@@ -61,7 +63,7 @@ function compare(a: number, b: number, dir: 'asc' | 'desc'): number {
 }
 
 export default function SolveList({
-    solves, sessionId, decimals, onPenalty, onDelete, onOpenAverage,
+    solves, sessionId, decimals, onPenalty, onDelete, onOpenAverage, compact = false,
 }: SolveListProps) {
     const [openId, setOpenId] = useState<number | null>(null)
     const [sort, setSort] = useState<Sort | null>(null)
@@ -116,7 +118,7 @@ export default function SolveList({
       // The # column is sized to the longest number it holds. A fixed width fit
       // three digits, and solve 1000 ran straight into its own time.
       <ol
-        className="solve-list"
+        className={compact ? 'solve-list compact' : 'solve-list'}
         style={{ '--n-digits': String(solves.length).length } as CSSProperties}
       >
       {/* Three of the four headings are controls now, so the row is no longer
@@ -129,9 +131,11 @@ export default function SolveList({
         <span className="solve-ao">
           <Head label="ao5" sortKey="ao5" sort={sort} onCycle={cycle} />
         </span>
-        <span className="solve-ao">
-          <Head label="ao12" sortKey="ao12" sort={sort} onCycle={cycle} />
-        </span>
+        {!compact && (
+          <span className="solve-ao">
+            <Head label="ao12" sortKey="ao12" sort={sort} onCycle={cycle} />
+          </span>
+        )}
       </li>
 
       {rows.map(({ solve, index }) => {
@@ -165,7 +169,7 @@ export default function SolveList({
               </span>
             </button>
 
-            {[5, 12].map((size) => {
+            {(compact ? [5] : [5, 12]).map((size) => {
               const value = size === 5 ? ao5[index] : ao12[index]
               const text = formatTime(value, decimals)
 
