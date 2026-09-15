@@ -42,7 +42,7 @@ const TABS: { id: TabId; name: string; subs: { id: string; name: string }[] }[] 
       { id: 'clock', name: 'clock' },
       { id: 'entry', name: 'entry' },
       { id: 'scramble', name: 'scramble' },
-      { id: 'preview', name: 'preview' },
+      { id: 'preview', name: 'floating panels' },
     ],
   },
   {
@@ -363,11 +363,32 @@ export default function SettingsPage({
             >
               <Toggle value={timer.showEventPicker} onChange={(v) => setTimer('showEventPicker', v)} />
             </Row>
+            <Row
+              label="event + last / next"
+              description="The whole row above the scramble: the event dropdown and the ‹ last / next › buttons. The scramble itself stays."
+              keywords="scramble header event type puzzle arrows hide"
+            >
+              <Toggle value={timer.showScrambleHead} onChange={(v) => setTimer('showScrambleHead', v)} />
+            </Row>
             <Row label="solve list" keywords="times history sidebar rail">
               <Toggle value={timer.showSolveList} onChange={(v) => setTimer('showSolveList', v)} />
             </Row>
+            <Row
+              label="float the solve list"
+              description="A compact solve list in a box of its own, with the session picker and the tool buttons. The sidebar goes once nothing is left in it."
+              keywords="detach undock compact sidebar rail move"
+            >
+              <Toggle value={timer.listFloating} onChange={(v) => setTimer('listFloating', v)} />
+            </Row>
             <Row label="session stats" keywords="sidebar rail averages">
               <Toggle value={timer.showStats} onChange={(v) => setTimer('showStats', v)} />
+            </Row>
+            <Row
+              label="float the session stats"
+              description="Takes the stats out of the sidebar into a box you can move and resize. The ⧉ button on them does the same."
+              keywords="detach undock sidebar rail move"
+            >
+              <Toggle value={timer.statsFloating} onChange={(v) => setTimer('statsFloating', v)} />
             </Row>
             <Row label="ao5 / ao12 under the clock" keywords="average">
               <Toggle value={timer.showAverages} onChange={(v) => setTimer('showAverages', v)} />
@@ -514,6 +535,13 @@ export default function SettingsPage({
               keywords="chart plot trend progress"
             >
               <Toggle value={timer.showGraph} onChange={(v) => setTimer('showGraph', v)} />
+            </Row>
+            <Row
+              label="snap panels"
+              description="Floating boxes pull to the edges of the timer and of each other, and to each other's sizes. Hold ⌥ (Alt) while dragging to place one freely."
+              keywords="snap align magnet grid drag resize floating"
+            >
+              <Toggle value={timer.snapPanels} onChange={(v) => setTimer('snapPanels', v)} />
             </Row>
           </>
         )

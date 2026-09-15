@@ -33,7 +33,7 @@ const SECTIONS: { id: Section; label: string; action?: ActionId }[] = [
   { id: 'stats', label: 'Stats', action: 'goStats' },
   { id: 'bld', label: '3BLD' },
   { id: 'cfop', label: 'CFOP'},
-  { id: 'settings', label: 'Settings' },
+  { id: 'settings', label: 'Settings', action: 'goSettings' },
 ];
 
 /**
@@ -120,6 +120,7 @@ export default function App() {
   useHotkeys(keymap, {
     goTimer: () => setSection('timer'),
     goStats: () => setSection('stats'),
+    goSettings: () => setSection('settings'),
     toggleTopBar: () => updateAppearance({ ...appearance, topBarStowed: !appearance.topBarStowed }),
   }, keymap.enabled && !timerBusy);
 

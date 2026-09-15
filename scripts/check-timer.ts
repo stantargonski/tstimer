@@ -16,8 +16,10 @@ import { averageText } from '../src/timer/averageText';
 import { sessionCsv, solvesCsv } from '../src/data/backup';
 import { newSession, type Solve } from '../src/timer/types';
 import {
-  BESIDE_MIN, FIT_GAP, STACK_GAP, clearOf, fitPanel, overlaps, type FrameBox, type PanelBox,
+  BESIDE_MIN, FIT_GAP, STACK_GAP, clearOf, fitPanel, overlaps, rectOf,
+  type FrameBox, type PanelBox, type Rect,
 } from '../src/timer/panelFit';
+import { SNAP, snapMove, snapResize } from '../src/timer/panelSnap';
 import { PREVIEW_MARGIN } from '../src/timer/settings';
 
 const failures: string[] = [];
@@ -175,15 +177,15 @@ check(lines[3].includes("R U R' scramble 1"), 'each line carries its own scrambl
 // full HD one. The rail is 329 wide at stock text size, not its 300px basis.
 const PREVIEW: PanelBox = { width: 320, height: 268, right: 16, bottom: 16 };
 const GRAPH: PanelBox = { width: 320, height: 150, right: 348, bottom: 16 };
-const WIDE: FrameBox = { width: 1920, height: 1000, left: 329 };
-const NARROW: FrameBox = { width: 860, height: 704, left: 329 };
+const WIDE: FrameBox = { width: 1920, height: 1000, left: 329, top: 150 };
+const NARROW: FrameBox = { width: 860, height: 704, left: 329, top: 149 };
 
 check(
   JSON.stringify(fitPanel(PREVIEW, WIDE)) === JSON.stringify(PREVIEW),
   'a panel with room to spare is drawn exactly as saved',
 );
 check(
-  fitPanel(GRAPH, { width: 0, height: 0, left: 0 }) === GRAPH,
+  fitPanel(GRAPH, { width: 0, height: 0, left: 0, top: 0 }) === GRAPH,
   'an unmeasured frame passes the panel through untouched',
 );
 
@@ -237,6 +239,76 @@ check(
   clearOf(chosenFit, previewNarrow, chosen, PREVIEW, NARROW) === chosenFit,
   'an overlap the user dragged into is left alone',
 );
+
+// ---- the clock and its averages, kept clear of ----
+
+// Measured off the timer at 860×760 with the rail docked: the clock, its delta,
+// and the ao5 / ao12 line under it, in frame coordinates.
+const CLOCK: Rect = { left: 405, top: 300, right: 699, bottom: 475 };
+
+const under = fitPanel(PREVIEW, NARROW, { keepOut: CLOCK, minHeight: 140 });
+check(
+  rectOf(under, NARROW).top >= CLOCK.bottom + STACK_GAP,
+  `the preview starts below the averages; its top is at ${rectOf(under, NARROW).top}`,
+);
+check(
+  under.right === previewNarrow.right && under.bottom === previewNarrow.bottom,
+  'and it is shortened from the top, not moved',
+);
+const parked = { ...PREVIEW, bottom: 420 };
+check(
+  JSON.stringify(fitPanel(parked, NARROW, { keepOut: CLOCK, minHeight: 140 }))
+    === JSON.stringify(fitPanel(parked, NARROW)),
+  'a panel parked up beside the scramble is left alone',
+);
+check(
+  fitPanel(PREVIEW, NARROW, { keepOut: CLOCK, minHeight: 250 }).height === 250,
+  'a panel is never shortened past its floor',
+);
+
+// At 830 the graph has no room beside the preview, and above it is the clock.
+const shortPreview = fitPanel(PREVIEW, NARROWER, { keepOut: CLOCK, minHeight: 140 });
+const pushedGraph = fitPanel(GRAPH, NARROWER, { keepOut: CLOCK, minHeight: 90 });
+check(
+  clearOf(pushedGraph, shortPreview, GRAPH, PREVIEW, NARROWER, { keepOut: CLOCK, minHeight: 90 })
+    === pushedGraph,
+  'the graph is never stacked onto the clock to clear the preview',
+);
+
+// ---- snapping ----
+
+const ROOM: FrameBox = { width: 1000, height: 800, left: 300, top: 150 };
+const PREVIEW_AT: Rect = { left: 600, top: 500, right: 900, bottom: 700 };
+const OTHERS = [{ id: 'preview', rect: PREVIEW_AT }];
+
+// 8px short of sitting a gap to the preview's left.
+const near: Rect = { left: 380, top: 520, right: 580, bottom: 620 };
+const pulled = snapMove(near, OTHERS, ROOM);
+check(
+  pulled.rect.right === PREVIEW_AT.left - STACK_GAP,
+  `a box ${SNAP - 2}px off sits exactly a gap beside the other; got right ${pulled.rect.right}`,
+);
+check(
+  pulled.rect.right - pulled.rect.left === 200 && pulled.rect.bottom - pulled.rect.top === 100,
+  'moving never changes its size',
+);
+check(
+  pulled.guides.some((guide) => guide.axis === 'x' && guide.at === PREVIEW_AT.left - STACK_GAP),
+  'and a guide marks the line it landed on',
+);
+const far = snapMove({ ...near, left: 377, right: 577 }, OTHERS, ROOM);
+check(far.rect.right === 577 && far.guides.length === 0, `${SNAP + 1}px off pulls nothing`);
+const railSide = snapMove({ ...near, left: ROOM.left + FIT_GAP + 6, right: ROOM.left + FIT_GAP + 206 }, [], ROOM);
+check(railSide.rect.left === ROOM.left + FIT_GAP, 'an edge near the rail lands a margin off it');
+
+// Resizing from the top-left: 5px short of the preview's 300 width.
+const grown = snapResize({ left: 285, top: 520, right: 580, bottom: 620 }, OTHERS, ROOM);
+check(grown.rect.right === 580 && grown.rect.bottom === 620, 'the pinned corner stays put');
+check(
+  grown.rect.right - grown.rect.left === 300 && grown.matched.includes('preview'),
+  `the width pulls to the preview's; got ${grown.rect.right - grown.rect.left}`,
+);
+check(grown.guides.length === 0, 'a matched size draws no line of its own');
 
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);

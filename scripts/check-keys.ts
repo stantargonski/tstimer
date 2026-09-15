@@ -125,6 +125,20 @@ check(actionFor(hostile, press('KeyM')) === null, 'an unknown action binds nothi
 const unidentified = readKeymap({ schemaVersion: 1, binds: { toggleInspection: [{ code: 'Unidentified' }, null] } });
 check(unidentified.binds.toggleInspection[0] === null, 'a saved "Unidentified" is dropped rather than bound');
 
+// ---- the keys added with the floating panels ----
+
+check(actionFor(DEFAULT_KEYMAP, press('Comma')) === 'goSettings', ', opens settings');
+check(actionFor(DEFAULT_KEYMAP, press('', { key: ',' })) === 'goSettings', 'a bare "," with no code still opens settings');
+check(actionFor(DEFAULT_KEYMAP, press('KeyR')) === 'toggleListFloat', 'r floats the solve list');
+check(actionFor(DEFAULT_KEYMAP, press('KeyT')) === 'toggleStatsFloat', 't floats the stats');
+check(
+  actionFor(DEFAULT_KEYMAP, press('KeyE')) === 'toggleScramble',
+  'e keeps its action id, so a key someone saved against it still works',
+);
+const older = readKeymap({ schemaVersion: 1, binds: { toggleScramble: [{ code: 'KeyE' }, null] } });
+check(actionFor(older, press('Comma')) === 'goSettings', 'a keymap saved before , existed still picks it up');
+check(actionFor(older, press('KeyR')) === 'toggleListFloat', 'and r');
+
 // ---- labels ----
 
 check(comboLabel({ code: 'KeyZ', mod: true, shift: true, alt: false }, true) === '⇧⌘Z', 'mac label');

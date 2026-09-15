@@ -75,13 +75,15 @@ export default function TimerPreview({ settings }: { settings: TimerSettings }) 
           <div className="timer-main">
             {settings.showScramble && (
               <div className={settings.flatScramble ? 'scramble-bar flat' : 'scramble-bar'}>
-                <div className="scramble-head">
-                  {settings.showEventPicker && <span className="event-picker">3x3</span>}
-                  <span className="scramble-nav">
-                    <span>‹ last</span>
-                    <span>next ›</span>
-                  </span>
-                </div>
+                {settings.showScrambleHead && (
+                  <div className="scramble-head">
+                    {settings.showEventPicker && <span className="event-picker">3x3</span>}
+                    <span className="scramble-nav">
+                      <span>‹ last</span>
+                      <span>next ›</span>
+                    </span>
+                  </div>
+                )}
                 <div className="scramble-body">
                   <span className={settings.monoScramble ? 'scramble-text mono' : 'scramble-text'}>
                     {"D2 F' U R2 B L' F2 U'".split(' ').map((move, index) => (

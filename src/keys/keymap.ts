@@ -34,9 +34,10 @@ export interface KeyPress {
 export type ActionId =
   | 'deleteLast' | 'undoDelete' | 'plus2' | 'dnf' | 'clearPenalty'
   | 'prevScramble' | 'nextScramble' | 'copyScramble' | 'openEvent'
-  | 'openSession' | 'goStats' | 'goTimer'
+  | 'openSession' | 'goStats' | 'goTimer' | 'goSettings'
   | 'toggleInspection' | 'toggleRail' | 'toggleTopBar' | 'toggleScramble'
-  | 'toggleComp' | 'togglePreview' | 'toggleGraph';
+  | 'toggleComp' | 'togglePreview' | 'toggleGraph'
+  | 'toggleListFloat' | 'toggleStatsFloat';
 
 export type ActionGroup = 'solves' | 'scramble' | 'navigation' | 'toggles';
 
@@ -70,14 +71,25 @@ export const ACTIONS: Action[] = [
   { id: 'openSession', label: 'session picker', group: 'navigation', description: 'Opens the session dropdown.' },
   { id: 'goStats', label: 'statistics', group: 'navigation' },
   { id: 'goTimer', label: 'back to the timer', group: 'navigation', description: 'From any other page.' },
+  { id: 'goSettings', label: 'settings', group: 'navigation' },
 
   { id: 'toggleInspection', label: 'inspection', group: 'toggles' },
   { id: 'toggleRail', label: 'sidebar', group: 'toggles' },
   { id: 'toggleTopBar', label: 'menu bar', group: 'toggles' },
-  { id: 'toggleScramble', label: 'scramble bar', group: 'toggles' },
+  // The id is older than the label: it hid the whole scramble bar once, and
+  // keeping it means a key someone already bound to it still does this.
+  {
+    id: 'toggleScramble', label: 'event + last / next', group: 'toggles',
+    description: 'The row above the scramble. The scramble itself stays.',
+  },
   { id: 'toggleComp', label: 'comp sim', group: 'toggles' },
   { id: 'togglePreview', label: 'cube preview', group: 'toggles' },
   { id: 'toggleGraph', label: 'session graph', group: 'toggles' },
+  {
+    id: 'toggleListFloat', label: 'float the solve list', group: 'toggles',
+    description: 'A compact list in a box of its own, or back into the sidebar.',
+  },
+  { id: 'toggleStatsFloat', label: 'float the session stats', group: 'toggles' },
 ];
 
 /** Two keys an action may answer to: a primary, and an alternate for the
@@ -112,6 +124,7 @@ export const DEFAULT_KEYMAP: Keymap = {
     openSession: [key('KeyS'), null],
     goStats: [key('KeyD'), null],
     goTimer: [key('KeyF'), null],
+    goSettings: [key('Comma'), null],
     toggleInspection: [key('KeyI'), null],
     toggleRail: [key('KeyQ'), null],
     toggleTopBar: [key('KeyW'), null],
@@ -119,6 +132,8 @@ export const DEFAULT_KEYMAP: Keymap = {
     toggleComp: [key('KeyZ'), null],
     togglePreview: [key('KeyX'), null],
     toggleGraph: [key('KeyC'), null],
+    toggleListFloat: [key('KeyR'), null],
+    toggleStatsFloat: [key('KeyT'), null],
   },
 };
 
