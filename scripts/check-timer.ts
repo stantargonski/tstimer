@@ -302,13 +302,26 @@ const railSide = snapMove({ ...near, left: ROOM.left + FIT_GAP + 6, right: ROOM.
 check(railSide.rect.left === ROOM.left + FIT_GAP, 'an edge near the rail lands a margin off it');
 
 // Resizing from the top-left: 5px short of the preview's 300 width.
-const grown = snapResize({ left: 285, top: 520, right: 580, bottom: 620 }, OTHERS, ROOM);
+const grown = snapResize(
+  { left: 285, top: 520, right: 580, bottom: 620 }, ['left', 'top'], OTHERS, ROOM,
+);
 check(grown.rect.right === 580 && grown.rect.bottom === 620, 'the pinned corner stays put');
 check(
   grown.rect.right - grown.rect.left === 300 && grown.matched.includes('preview'),
   `the width pulls to the preview's; got ${grown.rect.right - grown.rect.left}`,
 );
 check(grown.guides.length === 0, 'a matched size draws no line of its own');
+
+// From the right edge instead: 4px short of the preview's width, left edge pinned.
+const widened = snapResize({ left: 300, top: 150, right: 596, bottom: 250 }, ['right'], OTHERS, ROOM);
+check(
+  widened.rect.left === 300 && widened.rect.right === 600 && widened.matched.includes('preview'),
+  `the right edge pulls to the preview's width too; got ${JSON.stringify(widened.rect)}`,
+);
+check(
+  widened.rect.top === 150 && widened.rect.bottom === 250,
+  'and a side resize leaves the other axis alone',
+);
 
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);

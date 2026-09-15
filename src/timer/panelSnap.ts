@@ -108,23 +108,41 @@ export function snapMove(rect: Rect, others: Other[], frame: FrameBox): SnapGuid
   };
 }
 
+/** A side of a box. A corner is two of them. */
+export type Edge = 'left' | 'right' | 'top' | 'bottom';
+
 /**
- * A box being resized from its top-left corner. The right and bottom edges are
- * pinned, so only the left and top move — onto a line, or to where they make
- * the box another box's width or height.
+ * A box being resized by `edges` — one side, or a corner's two. The other sides
+ * stay put, so only the moving ones pull: onto a line, or to where they make the
+ * box another box's width or height.
  */
-export function snapResize(rect: Rect, others: Other[], frame: FrameBox): SnapGuides & { rect: Rect } {
+export function snapResize(
+  rect: Rect, edges: Edge[], others: Other[], frame: FrameBox,
+): SnapGuides & { rect: Rect } {
   const to = lines(frame, others);
-  const widths = others.map(({ id, rect: other }): Target => ({
-    at: rect.right - (other.right - other.left), match: id,
-  }));
-  const heights = others.map(({ id, rect: other }): Target => ({
-    at: rect.bottom - (other.bottom - other.top), match: id,
-  }));
-  const x = pull(rect.left, [...to.left, ...widths]);
-  const y = pull(rect.top, [...to.top, ...heights]);
+  const sizes = (at: (other: Rect) => number) =>
+    others.map(({ id, rect: other }): Target => ({ at: at(other), match: id }));
+  const width = (other: Rect) => other.right - other.left;
+  const height = (other: Rect) => other.bottom - other.top;
+
+  const left = edges.includes('left');
+  const top = edges.includes('top');
+  const x = left
+    ? pull(rect.left, [...to.left, ...sizes((other) => rect.right - width(other))])
+    : edges.includes('right')
+      ? pull(rect.right, [...to.right, ...sizes((other) => rect.left + width(other))])
+      : null;
+  const y = top
+    ? pull(rect.top, [...to.top, ...sizes((other) => rect.bottom - height(other))])
+    : edges.includes('bottom')
+      ? pull(rect.bottom, [...to.bottom, ...sizes((other) => rect.top + height(other))])
+      : null;
+
+  const next = { ...rect };
+  if (x) next[left ? 'left' : 'right'] += x.delta;
+  if (y) next[top ? 'top' : 'bottom'] += y.delta;
   return {
-    rect: { ...rect, left: rect.left + (x?.delta ?? 0), top: rect.top + (y?.delta ?? 0) },
+    rect: next,
     guides: guidesOf(x, y),
     matched: [x?.target.match, y?.target.match].filter((id): id is string => id !== undefined),
   };

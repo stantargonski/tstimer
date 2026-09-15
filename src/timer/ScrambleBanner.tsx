@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Scramble } from './scramble'
 import { scrambleText } from './scramble'
-import type { ScrambleClick } from './settings'
+import { SCALE_MAX, SCALE_MIN, type ScrambleClick } from './settings'
+import DragHandle from './DragHandle'
 
 interface ScrambleBannerProps {
   scramble: Scramble
@@ -17,14 +18,36 @@ interface ScrambleBannerProps {
   /** The row above the scramble — the event picker and last / next. Off leaves
       the scramble alone on the bar. */
   showHead?: boolean
+  /** The scramble's text size, as a percentage of stock. */
+  scale?: number
+  /**
+   * Given, the bar's bottom edge can be dragged: down makes the scramble
+   * bigger and the bar with it, up smaller. It is the text size setting, set by
+   * hand — so the setting and the edge can never disagree about the size.
+   */
+  onScale?: (percent: number) => void
   /** The event picker, rendered above the scramble. */
   children?: ReactNode
 }
 
 export default function ScrambleBanner({
-  scramble, canGoBack, onLast, onNext, action, flat, mono, showHead = true, children,
+  scramble, canGoBack, onLast, onNext, action, flat, mono, showHead = true, scale = 100,
+  onScale, children,
 }: ScrambleBannerProps) {
   const [copied, setCopied] = useState(false)
+  const textRef = useRef<HTMLButtonElement>(null)
+  /** The size and height the drag started from. */
+  const from = useRef({ scale, height: 1 })
+
+  // The scramble's height grows with its text size, so the edge follows the
+  // pointer when the size moves by the share of that height it was dragged.
+  function drag(delta: number) {
+    const start = from.current
+    const next = Math.round(Math.min(
+      SCALE_MAX, Math.max(SCALE_MIN, start.scale * (start.height + delta) / start.height),
+    ))
+    if (next !== scale) onScale?.(next)
+  }
 
   useEffect(() => {
     if (!copied) return
@@ -66,6 +89,7 @@ export default function ScrambleBanner({
 
       <div className="scramble-body">
         <button
+          ref={textRef}
           type="button"
           className={`scramble-text${copied ? ' copied' : ''}${mono ? ' mono' : ''}`}
           title={title}
@@ -83,6 +107,17 @@ export default function ScrambleBanner({
         </button>
       </div>
 
+      {onScale && (
+        <DragHandle
+          axis="y"
+          className="scramble-grip"
+          label="drag to resize the scramble"
+          onStart={() => {
+            from.current = { scale, height: Math.max(1, textRef.current?.offsetHeight ?? 1) }
+          }}
+          onDrag={drag}
+        />
+      )}
     </div>
   )
 }
