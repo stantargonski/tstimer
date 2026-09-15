@@ -3,7 +3,8 @@ import { formatTime } from './format'
 import { graphSeries } from './charts/sessionGraph'
 import { linePath, niceStep } from './charts/scale'
 import { useFloatingPanel } from './useFloatingPanel'
-import type { FrameBox } from './panelFit'
+import type { FrameBox, PanelBox } from './panelFit'
+import PanelEdges from './PanelEdges'
 import type { SnapOptions } from './panelSnap'
 import {
   GRAPH_MAX_HEIGHT, GRAPH_MAX_WIDTH, GRAPH_MIN_HEIGHT, GRAPH_MIN_WIDTH, GRAPH_SPANS,
@@ -31,8 +32,8 @@ interface SessionGraphProps {
   /** Lit while another box is being resized to its size. */
   highlight: boolean
   onSpan: (span: GraphSpan) => void
-  onResize: (width: number, height: number) => void
-  onMove: (right: number, bottom: number) => void
+  /** Every move and resize, as the whole box. */
+  onBox: (box: PanelBox) => void
 }
 
 /**
@@ -48,7 +49,7 @@ interface SessionGraphProps {
  */
 export default function SessionGraph({
   solves, decimals, span, width, height, right, bottom, frame, snap, highlight,
-  onSpan, onResize, onMove,
+  onSpan, onBox,
 }: SessionGraphProps) {
   const panel = useFloatingPanel({
     width,
@@ -61,8 +62,7 @@ export default function SessionGraph({
     maxWidth: GRAPH_MAX_WIDTH,
     minHeight: GRAPH_MIN_HEIGHT,
     maxHeight: GRAPH_MAX_HEIGHT,
-    onResize,
-    onMove,
+    onChange: onBox,
   })
 
   /** Which solve in the window the pointer is nearest, or null when it is off the plot. */
@@ -160,6 +160,8 @@ export default function SessionGraph({
           panel.startResize(down)
         }}
       />
+
+      <PanelEdges panel={panel} />
 
       <button
         type="button"

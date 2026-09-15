@@ -5,7 +5,8 @@ import type { WcaEvent } from './events'
 import type { Scramble } from './scramble'
 import { PREVIEW_MAX, PREVIEW_MIN } from './settings'
 import { useFloatingPanel } from './useFloatingPanel'
-import type { FrameBox } from './panelFit'
+import type { FrameBox, PanelBox } from './panelFit'
+import PanelEdges from './PanelEdges'
 import type { SnapOptions } from './panelSnap'
 
 interface ScramblePreviewProps {
@@ -19,8 +20,8 @@ interface ScramblePreviewProps {
   snap: SnapOptions
   /** Lit while another box is being resized to its size. */
   highlight: boolean
-  onResize: (width: number, height: number) => void
-  onMove: (right: number, bottom: number) => void
+  /** Every move and resize, as the whole box. */
+  onBox: (box: PanelBox) => void
   /** Back to the size and corner it ships at, after a drag has lost it. */
   onReset: () => void
 }
@@ -37,7 +38,7 @@ interface ScramblePreviewProps {
  * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
-  event, scramble, width, height, right, bottom, frame, snap, highlight, onResize, onMove, onReset,
+  event, scramble, width, height, right, bottom, frame, snap, highlight, onBox, onReset,
 }: ScramblePreviewProps) {
   const size = event.size ?? 3
 
@@ -65,8 +66,7 @@ export default function ScramblePreview({
     maxHeight: PREVIEW_MAX,
     frame,
     snap,
-    onResize,
-    onMove,
+    onChange: onBox,
   })
 
   return (
@@ -84,6 +84,8 @@ export default function ScramblePreview({
         onPointerUp={panel.onPointerUp}
         onPointerCancel={panel.onPointerUp}
       />
+
+      <PanelEdges panel={panel} />
 
       <span
         className="preview-title"

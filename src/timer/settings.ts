@@ -87,6 +87,12 @@ export interface TimerSettings {
   /** The rail, collapsed out of the way. Left in the timer's settings rather
       than the appearance ones because it is a part of the timer, not of the app. */
   railStowed: boolean;
+  /** The docked sidebar's width, as last dragged. Also the width of the stats
+      when they sit beside the scramble bar on their own. */
+  railWidth: number;
+  /** How tall the stats are in the sidebar when the solve list shares it, as
+      last dragged — or null for as tall as they need. */
+  railSplit: number | null;
   /** The scramble preview panel's size, as the user last dragged it. */
   previewWidth: number;
   previewHeight: number;
@@ -117,6 +123,9 @@ export interface TimerSettings {
    */
   statsBox: PanelBox | null;
   listBox: PanelBox | null;
+  /** Whether the floating stats box is as tall as what is in it. Off from the
+      first time its height is dragged by hand. */
+  statsFitHeight: boolean;
   /** Whether the floating boxes pull to edges and to each other's sizes. */
   snapPanels: boolean;
   /** How many cubes a multi-blind attempt is for. */
@@ -175,6 +184,8 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   clockScale: 100,
   scrambleScale: 100,
   railStowed: false,
+  railWidth: 300,
+  railSplit: null,
   previewWidth: 320,
   previewHeight: 268,
   previewRight: 16,
@@ -191,6 +202,7 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   listFloating: false,
   statsBox: null,
   listBox: null,
+  statsFitHeight: true,
   snapPanels: true,
   mbldCount: 3,
   benchEvents: DEFAULT_BENCH_EVENTS,
@@ -225,6 +237,12 @@ export const FLOAT_MAX_HEIGHT = 900;
 /** The size a floating stats box and solve list open at. */
 export const STATS_FLOAT = { width: 260, height: 200 };
 export const LIST_FLOAT = { width: 260, height: 320 };
+
+/** How narrow and wide the docked sidebar may be dragged, and the least of it
+    the stats may be given when they share it with the list. */
+export const RAIL_MIN = 240;
+export const RAIL_MAX = 560;
+export const RAIL_SPLIT_MIN = 80;
 
 export const MBLD_MIN = 2;
 export const MBLD_MAX = 60;
@@ -307,6 +325,10 @@ export function readTimerSettings(input: unknown): TimerSettings {
         parsed.scrambleScale, SCALE_MIN, SCALE_MAX, DEFAULT_TIMER_SETTINGS.scrambleScale,
       ),
       railStowed: bool(parsed.railStowed, false),
+      railWidth: clamp(parsed.railWidth, RAIL_MIN, RAIL_MAX, DEFAULT_TIMER_SETTINGS.railWidth),
+      railSplit: typeof parsed.railSplit === 'number'
+        ? clamp(parsed.railSplit, RAIL_SPLIT_MIN, 4000, RAIL_SPLIT_MIN)
+        : null,
       previewWidth: clamp(
         parsed.previewWidth, PREVIEW_MIN, PREVIEW_MAX, DEFAULT_TIMER_SETTINGS.previewWidth,
       ),
@@ -333,6 +355,7 @@ export function readTimerSettings(input: unknown): TimerSettings {
       listFloating: bool(parsed.listFloating, false),
       statsBox: box(parsed.statsBox),
       listBox: box(parsed.listBox),
+      statsFitHeight: bool(parsed.statsFitHeight, true),
       snapPanels: bool(parsed.snapPanels, true),
       mbldCount: clamp(parsed.mbldCount, MBLD_MIN, MBLD_MAX, DEFAULT_TIMER_SETTINGS.mbldCount),
       benchEvents: bench,

@@ -20,6 +20,7 @@ import CompBar from './CompBar'
 import AverageDetail from './AverageDetail'
 import type { AverageView } from './averageText'
 import FloatingBox from './FloatingBox'
+import DragHandle from './DragHandle'
 import {
   FIT_GAP, STACK_GAP, clearOf, fitPanel, floatAt, rectOf,
   type FrameBox, type PanelBox, type Rect,
@@ -27,7 +28,8 @@ import {
 import type { SnapGuides, SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import {
-  DEFAULT_TIMER_SETTINGS, GRAPH_MIN_HEIGHT, LIST_FLOAT, STATS_FLOAT, type TimerSettings,
+  DEFAULT_TIMER_SETTINGS, GRAPH_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN, RAIL_SPLIT_MIN,
+  STATS_FLOAT, type TimerSettings,
 } from './settings'
 import { average, meanExec, meanMemo } from './stats'
 import { formatOf, resultOf, suggestTarget } from './comp'
@@ -123,6 +125,10 @@ export default function TimerPanel({
   const headRef = useRef<HTMLDivElement>(null)
   const clockRef = useRef<HTMLDivElement>(null)
   const underRef = useRef<HTMLDivElement>(null)
+  const railRef = useRef<HTMLElement>(null)
+  const railStatsRef = useRef<HTMLDivElement>(null)
+  /** What the sidebar drag in progress started from: a width, or a height. */
+  const dragFrom = useRef(0)
   /** Whether the clock is running, for the observer below — which is not a
       render, and so can't read `timing` itself. */
   const timingRef = useRef(false)
@@ -141,6 +147,8 @@ export default function TimerPanel({
   const [keepOut, setKeepOut] = useState<Rect | null>(null)
   /** The lines a held panel has snapped to, drawn across the frame. */
   const [guides, setGuides] = useState<SnapGuides | null>(null)
+  /** How tall the floating stats box is with none of it scrolled away. */
+  const [statsNatural, setStatsNatural] = useState<number | null>(null)
 
   // A resize observer rather than the window's resize event, because stowing the
   // rail changes the room without the window changing at all. It only fires on a
@@ -463,6 +471,14 @@ export default function TimerPanel({
   const listFloat = settings.showSolveList && settings.listFloating
   const anyDocked = statsDocked || listDocked
   const railShown = anyDocked && !settings.railStowed
+  /**
+   * The stats alone, with the list floating. There is no list for them to
+   * head, so rather than a block of stats over a column of empty sidebar they
+   * sit beside the scramble bar — the two one band, as tall as the taller.
+   */
+  const statsBand = statsDocked && listFloat
+  const railColumn = railShown && !statsBand
+  const bandShown = railShown && statsBand
   /** Where the session picker and the tools live: with the solve list, wherever
       it is — or with the stats, when the list is switched off. */
   const toolsIn: 'rail' | 'list' | 'stats' = settings.showSolveList
@@ -475,7 +491,7 @@ export default function TimerPanel({
    * the observer. Without this, floating the last part out of the sidebar drew
    * one frame with every box still kept clear of a rail that had already gone.
    */
-  const frame: FrameBox = railShown ? measured : { ...measured, left: 0 }
+  const frame: FrameBox = railColumn ? measured : { ...measured, left: 0 }
 
   // The three rail switches, shared by their buttons and their keys.
   function toggleComp() {
@@ -508,6 +524,18 @@ export default function TimerPanel({
     const statsFloating = !settings.statsFloating
     onSettings({ ...settings, statsFloating, railStowed: statsFloating && settings.railStowed })
     say(statsFloating ? 'stats floating' : 'stats back in the sidebar')
+  }
+
+  function setRailWidth(width: number) {
+    const railWidth = Math.round(Math.min(RAIL_MAX, Math.max(RAIL_MIN, width)))
+    if (railWidth !== settings.railWidth) onSettings({ ...settings, railWidth })
+  }
+
+  /** The stats' share of the sidebar, never so much that the list has no room. */
+  function setRailSplit(height: number) {
+    const room = (railRef.current?.clientHeight ?? 0) - 160
+    const railSplit = Math.round(Math.max(RAIL_SPLIT_MIN, Math.min(room, height)))
+    if (railSplit !== settings.railSplit) onSettings({ ...settings, railSplit })
   }
 
   useHotkeys(keymap, {
@@ -634,12 +662,21 @@ export default function TimerPanel({
 
   // The two sidebar parts, floating. Never put anywhere, they open at the
   // top-left of the space beside the sidebar, the list under the stats.
-  const statsBox = fitPanel(
-    settings.statsBox
-      ?? floatAt(frame, STATS_FLOAT.width, STATS_FLOAT.height, frame.top + FIT_GAP),
-    frame,
-    { keepOut, minHeight: 110 },
-  )
+  //
+  // The stats box is as tall as the stats until its height is dragged by hand,
+  // and gets there by growing downwards: its top is where it was put.
+  const statsHeight = settings.statsFitHeight ? statsNatural : null
+  const statsSaved = settings.statsBox
+  const statsStored: PanelBox = !statsSaved
+    ? floatAt(frame, STATS_FLOAT.width, statsHeight ?? STATS_FLOAT.height, frame.top + FIT_GAP)
+    : statsHeight === null
+      ? statsSaved
+      : {
+        ...statsSaved,
+        height: statsHeight,
+        bottom: statsSaved.bottom - (statsHeight - statsSaved.height),
+      }
+  const statsBox = fitPanel(statsStored, frame, { keepOut, minHeight: 110 })
   const listTop = statsFloat ? rectOf(statsBox, frame).bottom + STACK_GAP : frame.top + FIT_GAP
   const listBox = fitPanel(
     settings.listBox ?? floatAt(frame, LIST_FLOAT.width, LIST_FLOAT.height, listTop),
@@ -758,10 +795,22 @@ export default function TimerPanel({
 
       {/* The rail carries the tools now, so it stands as long as anything in
           it does rather than only as long as the solve list. */}
-      {railShown && (
-        <aside className={settings.flatSidebar ? 'timer-rail flat' : 'timer-rail'}>
+      {railColumn && (
+        <aside
+          ref={railRef}
+          className={settings.flatSidebar ? 'timer-rail flat' : 'timer-rail'}
+          style={{ flexBasis: settings.railWidth }}
+        >
           {statsDocked && (
-            <div className="rail-stats">
+            <div
+              ref={railStatsRef}
+              className="rail-stats"
+              // Only while the list shares the sidebar: on their own the stats
+              // are as tall as they are.
+              style={listDocked && settings.railSplit !== null
+                ? { height: settings.railSplit, overflowY: 'auto' }
+                : undefined}
+            >
               <button
                 type="button"
                 className="rail-icon stats-detach"
@@ -779,6 +828,16 @@ export default function TimerPanel({
                 onOpenAverage={setDetail}
               />
             </div>
+          )}
+
+          {statsDocked && listDocked && (
+            <DragHandle
+              axis="y"
+              className="rail-split"
+              label="drag to share the sidebar between the stats and the list"
+              onStart={() => { dragFrom.current = railStatsRef.current?.offsetHeight ?? 0 }}
+              onDrag={(delta) => setRailSplit(dragFrom.current + delta)}
+            />
           )}
 
           <div className="rail-head">
@@ -822,11 +881,50 @@ export default function TimerPanel({
               timer, and putting them here keeps them still while the list
               above them grows. */}
           {toolsIn === 'rail' && <div className="rail-tools">{tools(false)}</div>}
+
+          <DragHandle
+            axis="x"
+            className="rail-edge"
+            label="drag to resize the sidebar"
+            onStart={() => { dragFrom.current = railRef.current?.offsetWidth ?? settings.railWidth }}
+            onDrag={(delta) => setRailWidth(dragFrom.current + delta)}
+          />
         </aside>
       )}
 
       <div ref={mainRef} className="timer-main">
         <div ref={headRef} className="timer-head">
+        <div className="head-row">
+        {bandShown && (
+          <aside
+            className={settings.flatSidebar ? 'head-stats flat' : 'head-stats'}
+            style={{ width: settings.railWidth }}
+          >
+            <button
+              type="button"
+              className="rail-icon stats-detach"
+              aria-label="float the session stats"
+              title={withHint('float the stats', keymap, 'toggleStatsFloat')}
+              onClick={toggleStatsFloat}
+            >
+              ⧉
+            </button>
+            <StatsPanel
+              solves={solves}
+              decimals={settings.decimals}
+              event={event}
+              sessionId={session.id}
+              onOpenAverage={setDetail}
+            />
+            <DragHandle
+              axis="x"
+              className="rail-edge"
+              label="drag to resize the stats"
+              onStart={() => { dragFrom.current = settings.railWidth }}
+              onDrag={(delta) => setRailWidth(dragFrom.current + delta)}
+            />
+          </aside>
+        )}
         {settings.showScramble && (
           <ScrambleBanner
             scramble={scramble}
@@ -837,6 +935,8 @@ export default function TimerPanel({
             flat={settings.flatScramble}
             mono={settings.monoScramble}
             showHead={settings.showScrambleHead}
+            scale={settings.scrambleScale}
+            onScale={(scrambleScale) => onSettings({ ...settings, scrambleScale })}
           >
             {settings.showEventPicker && (
               <EventPicker value={session.event} onChange={setEvent} selectRef={eventSelect} />
@@ -846,6 +946,7 @@ export default function TimerPanel({
             )}
           </ScrambleBanner>
         )}
+        </div>
 
         {/* Docked under the scramble, in this column's flow. It used to sit above
             the clock inside the stage, which meant opening a round pushed the
@@ -979,10 +1080,13 @@ export default function TimerPanel({
             frame={frame}
             snap={snapFor('preview')}
             highlight={matched('preview')}
-            onResize={(previewWidth, previewHeight) =>
-              onSettings({ ...settings, previewWidth, previewHeight })}
-            onMove={(previewRight, previewBottom) =>
-              onSettings({ ...settings, previewRight, previewBottom })}
+            onBox={(next) => onSettings({
+              ...settings,
+              previewWidth: next.width,
+              previewHeight: next.height,
+              previewRight: next.right,
+              previewBottom: next.bottom,
+            })}
             // Position only. The size is something you set once to suit your
             // screen; the position is what gets knocked out of place dragging
             // the panel about, so putting it back is what's worth one click.
@@ -1007,10 +1111,13 @@ export default function TimerPanel({
             snap={snapFor('graph')}
             highlight={matched('graph')}
             onSpan={(graphSpan) => onSettings({ ...settings, graphSpan })}
-            onResize={(graphWidth, graphHeight) =>
-              onSettings({ ...settings, graphWidth, graphHeight })}
-            onMove={(graphRight, graphBottom) =>
-              onSettings({ ...settings, graphRight, graphBottom })}
+            onBox={(next) => onSettings({
+              ...settings,
+              graphWidth: next.width,
+              graphHeight: next.height,
+              graphRight: next.right,
+              graphBottom: next.bottom,
+            })}
           />
         )}
 
@@ -1024,7 +1131,14 @@ export default function TimerPanel({
             frame={frame}
             snap={snapFor('stats')}
             highlight={matched('stats')}
-            onBox={(next) => onSettings({ ...settings, statsBox: next })}
+            onBox={(next) => onSettings({
+              ...settings,
+              statsBox: next,
+              // A height dragged by hand is the height from then on; a move
+              // keeps the height it had, and so keeps fitting.
+              statsFitHeight: settings.statsFitHeight && next.height === statsBox.height,
+            })}
+            onNaturalHeight={setStatsNatural}
             onDock={toggleStatsFloat}
             head={toolsIn === 'stats' ? sessionPicker : undefined}
             foot={toolsIn === 'stats' ? tools(true) : undefined}
