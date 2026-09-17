@@ -1,5 +1,5 @@
 import { useRef, type PointerEvent } from 'react'
-import { boxOf, clampPlace, rectOf, type FrameBox, type PanelBox, type Rect } from './panelFit'
+import { boxOf, clampPlace, leftEdge, rectOf, type FrameBox, type PanelBox, type Rect } from './panelFit'
 import { snapMove, snapResize, type Edge, type SnapOptions } from './panelSnap'
 import { PREVIEW_MARGIN } from './settings'
 
@@ -113,7 +113,7 @@ export function useFloatingPanel({
     const across = left || edges.includes('right')
     const upDown = top || edges.includes('bottom')
     if (frame.width > 0) {
-      if (left) next.left = Math.max(frame.left, next.left)
+      if (left) next.left = Math.max(leftEdge(frame, next.top), next.left)
       else if (across) next.right = Math.min(frame.width - PREVIEW_MARGIN, next.right)
       if (top) next.top = Math.max(0, next.top)
       else if (upDown) next.bottom = Math.min(frame.height - PREVIEW_MARGIN, next.bottom)

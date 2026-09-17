@@ -28,7 +28,7 @@ import {
 import type { SnapGuides, SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import {
-  DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, GRAPH_MIN_HEIGHT, LIST_FIT_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
+  DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
   RAIL_SPLIT_MIN, SCRAMBLE_FLOAT_MAX_WIDTH, SCRAMBLE_FLOAT_MIN_HEIGHT, SCRAMBLE_FLOAT_MIN_WIDTH,
   SCRAMBLE_FLOAT_WIDTH, STATS_FLOAT, type PanelId, type TimerSettings,
 } from './settings'
@@ -143,8 +143,10 @@ export default function TimerPanel({
    * narrow-window rule hides it.
    */
   const [measured, setMeasured] = useState<FrameBox>({ width: 0, height: 0, left: 0, top: 0 })
+  /** How tall the rail is while it ends under the stats; null until measured. */
+  const [railHeight, setRailHeight] = useState<number | null>(null)
   /** The clock, its delta and the lines under it, in frame coordinates — what
-      a floating panel below it is shortened to stay clear of. */
+      the graph is never stacked onto to clear the preview. */
   const [keepOut, setKeepOut] = useState<Rect | null>(null)
   /** The lines a held panel has snapped to, drawn across the frame. */
   const [guides, setGuides] = useState<SnapGuides | null>(null)
@@ -499,7 +501,20 @@ export default function TimerPanel({
    * the observer. Without this, floating the last part out of the sidebar drew
    * one frame with every box still kept clear of a rail that had already gone.
    */
-  const frame: FrameBox = railColumn ? measured : { ...measured, left: 0 }
+  const railShort = railColumn && !listDocked
+  const frame: FrameBox = railColumn
+    ? { ...measured, railBottom: railShort ? railHeight ?? measured.height : measured.height }
+    : { ...measured, left: 0 }
+
+  // The rail comes and goes with what is docked, so it gets an observer of its
+  // own rather than a place in the frame's, which is set up once.
+  useEffect(() => {
+    const rail = railRef.current
+    if (!railShort || !rail) return
+    const observer = new ResizeObserver(() => setRailHeight(rail.offsetHeight))
+    observer.observe(rail)
+    return () => observer.disconnect()
+  }, [railShort])
 
   // The three rail switches, shared by their buttons and their keys.
   function toggleComp() {
@@ -679,11 +694,10 @@ export default function TimerPanel({
     right: settings.graphRight,
     bottom: settings.graphBottom,
   }
-  const graphFit = { keepOut, minHeight: GRAPH_MIN_HEIGHT }
-  const previewBox = fitPanel(storedPreview, frame, { keepOut, minHeight: 140 })
-  const fittedGraph = fitPanel(storedGraph, frame, graphFit)
+  const previewBox = fitPanel(storedPreview, frame)
+  const fittedGraph = fitPanel(storedGraph, frame)
   const graphBox = previewShown
-    ? clearOf(fittedGraph, previewBox, storedGraph, storedPreview, frame, graphFit)
+    ? clearOf(fittedGraph, previewBox, storedGraph, storedPreview, frame, { keepOut })
     : fittedGraph
 
   // The two sidebar parts, floating. Never put anywhere, they open at the
@@ -702,12 +716,10 @@ export default function TimerPanel({
         height: statsHeight,
         bottom: statsSaved.bottom - (statsHeight - statsSaved.height),
       }
-  const statsBox = fitPanel(statsStored, frame, { keepOut, minHeight: 110 })
+  const statsBox = fitPanel(statsStored, frame)
   const listTop = statsFloat ? rectOf(statsBox, frame).bottom + STACK_GAP : frame.top + FIT_GAP
   const listStored = settings.listBox ?? floatAt(frame, LIST_FLOAT.width, LIST_FLOAT.height, listTop)
-  // Taller than the others' floor: under its title, picker and tools, 140 left
-  // the list itself no room for a single time.
-  const listBox = fitPanel(listStored, frame, { keepOut, minHeight: LIST_FIT_MIN_HEIGHT })
+  const listBox = fitPanel(listStored, frame)
 
   // The scramble, floating: opened centred over the space beside the sidebar,
   // and kept as tall as the scramble in it the same way the stats box is — by

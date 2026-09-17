@@ -5,9 +5,11 @@ import { PREVIEW_MARGIN } from './settings';
  *
  * The settings hold where a panel was last put and how big it was made. This is
  * what that comes to on the window you have now: shrunk to fit beside the rail,
- * kept off the rail, shortened to start below the ao5 / ao12 line rather than
- * over it, and — when a small window pushes the graph onto the preview — moved
- * clear of it rather than left on top of it.
+ * kept off the rail, and — when a small window pushes the graph onto the
+ * preview — moved clear of it rather than left on top of it.
+ *
+ * Where a panel is put never changes its size. One dragged over the clock covers
+ * the clock; shrinking is only for a window with no room for the panel at all.
  *
  * None of it is written back. A window that shrinks and grows again puts every
  * panel back where it was, because the saved place was never touched.
@@ -28,6 +30,12 @@ export interface FrameBox {
   height: number;
   left: number;
   top: number;
+  /**
+   * How far down the rail reaches. With only the stats docked the rail ends
+   * under them, and the frame's left edge below that is free. Absent means the
+   * rail runs the frame's full height.
+   */
+  railBottom?: number;
 }
 
 /** A box in the frame's own coordinates, measured from its top-left. */
@@ -66,6 +74,16 @@ export function intersects(a: Rect, b: Rect): boolean {
 }
 
 /**
+ * How far left a box whose top is at `top` may go: clear of the rail while any
+ * of it would sit beside the rail, and the frame's own edge once all of it is
+ * below the rail.
+ */
+export function leftEdge(frame: FrameBox, top: number): number {
+  const railBottom = frame.railBottom ?? frame.height;
+  return top < railBottom + STACK_GAP ? frame.left : 0;
+}
+
+/**
  * A position kept within the frame: never past the rail on the left or above
  * the frame at the top. The right and bottom edges still allow PREVIEW_MARGIN,
  * so a panel can be tucked partly off-screen as before.
@@ -76,50 +94,28 @@ export function clampPlace(
   right: number, bottom: number, box: Pick<PanelBox, 'width' | 'height'>, frame: FrameBox,
 ): { right: number; bottom: number } {
   if (frame.width === 0) return { right, bottom };
-  const maxRight = Math.max(PREVIEW_MARGIN, frame.width - frame.left - box.width);
   const maxBottom = Math.max(PREVIEW_MARGIN, frame.height - box.height);
+  const placedBottom = Math.round(Math.min(maxBottom, Math.max(PREVIEW_MARGIN, bottom)));
+  const top = frame.height - placedBottom - box.height;
+  const maxRight = Math.max(PREVIEW_MARGIN, frame.width - leftEdge(frame, top) - box.width);
   return {
     right: Math.round(Math.min(maxRight, Math.max(PREVIEW_MARGIN, right))),
-    bottom: Math.round(Math.min(maxBottom, Math.max(PREVIEW_MARGIN, bottom))),
+    bottom: placedBottom,
   };
 }
 
 export interface FitOptions {
   /** The clock and everything hanging off it, in frame coordinates. */
   keepOut?: Rect | null;
-  /** The shortest the panel is drawn to stay clear of the clock. */
-  minHeight?: number;
 }
 
-/** A panel shrunk to fit beside the rail, placed within the frame, and kept
-    under the clock's lower lines. */
-export function fitPanel(
-  box: PanelBox, frame: FrameBox, { keepOut = null, minHeight = 0 }: FitOptions = {},
-): PanelBox {
+/** A panel shrunk to fit beside the rail and placed within the frame. */
+export function fitPanel(box: PanelBox, frame: FrameBox): PanelBox {
   if (frame.width === 0) return box;
-  const width = Math.max(0, Math.min(box.width, frame.width - frame.left - 2 * FIT_GAP));
+  const room = frame.width - leftEdge(frame, rectOf(box, frame).top) - 2 * FIT_GAP;
+  const width = Math.max(0, Math.min(box.width, room));
   const height = Math.max(0, Math.min(box.height, frame.height - 2 * FIT_GAP));
-  const placed = { width, height, ...clampPlace(box.right, box.bottom, { width, height }, frame) };
-  return keepOut ? belowClock(placed, frame, keepOut, minHeight) : placed;
-}
-
-/**
- * A panel whose top edge has ridden up into the clock's lower lines, shortened
- * from the top so it starts just under them.
- *
- * Only a panel that starts below the top of the clock and above the bottom of
- * the averages, and only across the clock's width: one parked higher up, or off
- * to the side of the clock, is somewhere it was put on purpose. Never shorter
- * than `minHeight` — past that it overlaps rather than becoming a sliver.
- */
-export function belowClock(
-  box: PanelBox, frame: FrameBox, keepOut: Rect, minHeight: number,
-): PanelBox {
-  const rect = rectOf(box, frame);
-  const floor = keepOut.bottom + STACK_GAP;
-  const across = rect.left < keepOut.right && keepOut.left < rect.right;
-  if (!across || rect.top <= keepOut.top || rect.top >= floor) return box;
-  return { ...box, height: Math.max(Math.min(minHeight, box.height), rect.bottom - floor) };
+  return { width, height, ...clampPlace(box.right, box.bottom, { width, height }, frame) };
 }
 
 /** Whether two boxes placed from the same corner cover any of the same ground. */
@@ -143,18 +139,15 @@ export function clearOf(
   graph: PanelBox, preview: PanelBox,
   storedGraph: PanelBox, storedPreview: PanelBox,
   frame: FrameBox,
-  { keepOut = null, minHeight = 0 }: FitOptions = {},
+  { keepOut = null }: FitOptions = {},
 ): PanelBox {
   if (!overlaps(graph, preview) || overlaps(storedGraph, storedPreview)) return graph;
 
   const besideRight = preview.right + preview.width + STACK_GAP;
-  const room = frame.width - frame.left - FIT_GAP - besideRight;
+  const room = frame.width - leftEdge(frame, rectOf(preview, frame).top) - FIT_GAP - besideRight;
   if (room >= BESIDE_MIN) {
     const width = Math.min(graph.width, room);
-    const beside = {
-      ...graph, width, ...clampPlace(besideRight, preview.bottom, { ...graph, width }, frame),
-    };
-    return keepOut ? belowClock(beside, frame, keepOut, minHeight) : beside;
+    return { ...graph, width, ...clampPlace(besideRight, preview.bottom, { ...graph, width }, frame) };
   }
 
   const above = {

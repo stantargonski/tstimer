@@ -16,7 +16,7 @@ import { averageText } from '../src/timer/averageText';
 import { sessionCsv, solvesCsv } from '../src/data/backup';
 import { newSession, type Solve } from '../src/timer/types';
 import {
-  BESIDE_MIN, FIT_GAP, STACK_GAP, clearOf, fitPanel, overlaps, rectOf,
+  BESIDE_MIN, FIT_GAP, STACK_GAP, clampPlace, clearOf, fitPanel, overlaps,
   type FrameBox, type PanelBox, type Rect,
 } from '../src/timer/panelFit';
 import { SNAP, snapMove, snapResize } from '../src/timer/panelSnap';
@@ -240,40 +240,46 @@ check(
   'an overlap the user dragged into is left alone',
 );
 
-// ---- the clock and its averages, kept clear of ----
+// ---- the clock and its averages ----
 
 // Measured off the timer at 860×760 with the rail docked: the clock, its delta,
 // and the ao5 / ao12 line under it, in frame coordinates.
 const CLOCK: Rect = { left: 405, top: 300, right: 699, bottom: 475 };
 
-const under = fitPanel(PREVIEW, NARROW, { keepOut: CLOCK, minHeight: 140 });
+const overClock = fitPanel(PREVIEW, NARROW);
 check(
-  rectOf(under, NARROW).top >= CLOCK.bottom + STACK_GAP,
-  `the preview starts below the averages; its top is at ${rectOf(under, NARROW).top}`,
-);
-check(
-  under.right === previewNarrow.right && under.bottom === previewNarrow.bottom,
-  'and it is shortened from the top, not moved',
-);
-const parked = { ...PREVIEW, bottom: 420 };
-check(
-  JSON.stringify(fitPanel(parked, NARROW, { keepOut: CLOCK, minHeight: 140 }))
-    === JSON.stringify(fitPanel(parked, NARROW)),
-  'a panel parked up beside the scramble is left alone',
-);
-check(
-  fitPanel(PREVIEW, NARROW, { keepOut: CLOCK, minHeight: 250 }).height === 250,
-  'a panel is never shortened past its floor',
+  overClock.width === previewNarrow.width && overClock.height === previewNarrow.height,
+  'a panel put over the clock keeps its size',
 );
 
 // At 830 the graph has no room beside the preview, and above it is the clock.
-const shortPreview = fitPanel(PREVIEW, NARROWER, { keepOut: CLOCK, minHeight: 140 });
-const pushedGraph = fitPanel(GRAPH, NARROWER, { keepOut: CLOCK, minHeight: 90 });
+const graphNarrower = fitPanel(GRAPH, NARROWER);
 check(
-  clearOf(pushedGraph, shortPreview, GRAPH, PREVIEW, NARROWER, { keepOut: CLOCK, minHeight: 90 })
-    === pushedGraph,
+  clearOf(graphNarrower, previewNarrower, GRAPH, PREVIEW, NARROWER, { keepOut: CLOCK }) === graphNarrower,
   'the graph is never stacked onto the clock to clear the preview',
 );
+
+// ---- a rail that ends under the stats ----
+
+const SHORT: FrameBox = { ...WIDE, railBottom: 260 };
+const low = clampPlace(4000, 100, { width: 260, height: 320 }, SHORT);
+check(
+  WIDE.width - low.right - 260 === 0,
+  `a box below the rail reaches the frame's left edge; its left is at ${WIDE.width - low.right - 260}`,
+);
+const nextToRail = clampPlace(4000, 500, { width: 260, height: 320 }, SHORT);
+check(
+  WIDE.width - nextToRail.right - 260 === SHORT.left,
+  'a box any of which is beside the rail is kept to its right',
+);
+check(
+  fitPanel({ width: 1900, height: 200, right: 16, bottom: 16 }, SHORT).width === WIDE.width - 2 * FIT_GAP,
+  'a box below the rail is fitted to the whole width',
+);
+const underRail = snapMove({ left: FIT_GAP + 5, top: 600, right: FIT_GAP + 205, bottom: 700 }, [], SHORT);
+check(underRail.rect.left === FIT_GAP, 'an edge near the frame below the rail lands a margin off it');
+const besideRail = snapMove({ left: SHORT.left + FIT_GAP + 5, top: 200, right: SHORT.left + FIT_GAP + 205, bottom: 300 }, [], SHORT);
+check(besideRail.rect.left === SHORT.left + FIT_GAP, 'beside the rail it still lands a margin off the rail');
 
 // ---- snapping ----
 

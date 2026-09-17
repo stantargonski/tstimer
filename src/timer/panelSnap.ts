@@ -1,4 +1,4 @@
-import { FIT_GAP, STACK_GAP, type FrameBox, type Rect } from './panelFit';
+import { FIT_GAP, STACK_GAP, leftEdge, type FrameBox, type Rect } from './panelFit';
 
 /**
  * Where a floating box is pulled to while it is dragged or resized.
@@ -71,9 +71,10 @@ function closer(a: Pull | null, b: Pull | null): Pull | null {
  * another's left edge or sits a gap to its right, never against its right edge
  * with no gap, which would read as the two touching by accident.
  */
-function lines(frame: FrameBox, others: Other[]) {
+function lines(frame: FrameBox, others: Other[], boxTop: number) {
   const at = (value: number): Target => ({ at: value });
-  const left = [at(frame.left + FIT_GAP)];
+  // Off the rail beside it, off the frame's edge below it.
+  const left = [at(leftEdge(frame, boxTop) + FIT_GAP)];
   const right = [at(frame.width - FIT_GAP)];
   const top = [at(frame.top + FIT_GAP)];
   const bottom = [at(frame.height - FIT_GAP)];
@@ -96,7 +97,7 @@ function guidesOf(x: Pull | null, y: Pull | null): Guide[] {
 
 /** A box being dragged, moved onto the nearest line on each axis. Its size never changes. */
 export function snapMove(rect: Rect, others: Other[], frame: FrameBox): SnapGuides & { rect: Rect } {
-  const to = lines(frame, others);
+  const to = lines(frame, others, rect.top);
   const x = closer(pull(rect.left, to.left), pull(rect.right, to.right));
   const y = closer(pull(rect.top, to.top), pull(rect.bottom, to.bottom));
   const dx = x?.delta ?? 0;
@@ -119,7 +120,7 @@ export type Edge = 'left' | 'right' | 'top' | 'bottom';
 export function snapResize(
   rect: Rect, edges: Edge[], others: Other[], frame: FrameBox,
 ): SnapGuides & { rect: Rect } {
-  const to = lines(frame, others);
+  const to = lines(frame, others, rect.top);
   const sizes = (at: (other: Rect) => number) =>
     others.map(({ id, rect: other }): Target => ({ at: at(other), match: id }));
   const width = (other: Rect) => other.right - other.left;
