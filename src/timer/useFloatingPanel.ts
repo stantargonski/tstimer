@@ -12,6 +12,13 @@ interface FloatingPanelOptions {
   maxWidth: number
   minHeight: number
   maxHeight: number
+  /**
+   * The size the panel was given, before panelFit squeezed it to the window.
+   * A move writes this back rather than the size it is drawn at, so dragging a
+   * panel through a spot where it is shortened doesn't leave it that short.
+   * Absent means the two are the same.
+   */
+  saved?: { width: number; height: number }
   /** The room the panel is kept within — see panelFit. */
   frame: FrameBox
   /** What it pulls to while held — see panelSnap. Absent means it pulls to nothing. */
@@ -65,8 +72,8 @@ function rounded(box: PanelBox): PanelBox {
  * how it behaves under the pointer.
  */
 export function useFloatingPanel({
-  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, frame, snap, locked = false,
-  onChange,
+  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, saved, frame, snap,
+  locked = false, onChange,
 }: FloatingPanelOptions) {
   const resizing = useRef<{ x: number; y: number; rect: Rect; edges: Edge[] } | null>(null)
   const moving = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null)
@@ -165,7 +172,7 @@ export function useFloatingPanel({
     } else {
       snap?.onGuides(null)
     }
-    onChange({ width, height, ...next })
+    onChange({ ...(saved ?? { width, height }), ...next })
   }
 
   function onPointerUp(up: PointerEvent<HTMLElement>) {

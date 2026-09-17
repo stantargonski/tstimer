@@ -915,6 +915,17 @@ textarea,
   backdrop-filter: blur(var(--panel-blur));
   transition: opacity 140ms ease;
 }
+/* The stats alone in the sidebar: a box as tall as they are, hung from the top,
+   rather than a full-height column that is mostly empty background. */
+.timer-rail.short {
+  align-self: flex-start;
+  max-height: 100%;
+  border-bottom: 1px solid var(--line);
+  border-bottom-right-radius: var(--radius);
+}
+.timer-rail.short .rail-head:not(:has(~ .rail-tools)) {
+  border-bottom: 0;
+}
 /* ----- collapsing the rail ----- */
 /* Collapsed, the rail is gone rather than narrowed: a column of nothing costs
    the same room as a column with something in it. This handle is what is left,

@@ -23,6 +23,8 @@ interface ScramblePreviewProps {
   highlight: boolean
   /** Every move and resize, as the whole box. */
   onBox: (box: PanelBox) => void
+  /** Its size before it was fitted to the window — see useFloatingPanel. */
+  saved?: { width: number; height: number }
   /** Pinned in place — see useFloatingPanel. */
   locked: boolean
   onLock: () => void
@@ -42,7 +44,7 @@ interface ScramblePreviewProps {
  * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
-  event, scramble, width, height, right, bottom, frame, snap, highlight, onBox, locked, onLock, onReset,
+  event, scramble, width, height, right, bottom, frame, snap, highlight, onBox, saved, locked, onLock, onReset,
 }: ScramblePreviewProps) {
   const size = event.size ?? 3
 
@@ -71,6 +73,7 @@ export default function ScramblePreview({
     frame,
     snap,
     locked,
+    saved,
     onChange: onBox,
   })
 

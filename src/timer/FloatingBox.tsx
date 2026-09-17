@@ -14,6 +14,8 @@ interface FloatingBoxProps {
   /** What the title bar says, and what the resize grip is named for. */
   title: string
   box: PanelBox
+  /** The box before it was fitted to the window — see useFloatingPanel. */
+  saved?: PanelBox
   frame: FrameBox
   snap: SnapOptions
   /** Lit while another box is being resized to its size. */
@@ -53,12 +55,13 @@ interface FloatingBoxProps {
  * sidebar by the ⧉ at the end of the title bar.
  */
 export default function FloatingBox({
-  className, title, box, frame, snap, highlight, onBox, onDock, dockTo = 'the sidebar',
+  className, title, box, saved, frame, snap, highlight, onBox, onDock, dockTo = 'the sidebar',
   locked, onLock, bareWhenLocked = false, widthOnly = false, limits, onNaturalHeight,
   head, foot, children,
 }: FloatingBoxProps) {
   const panel = useFloatingPanel({
     ...box,
+    saved,
     minWidth: limits?.minWidth ?? FLOAT_MIN_WIDTH,
     maxWidth: limits?.maxWidth ?? FLOAT_MAX_WIDTH,
     minHeight: limits?.minHeight ?? FLOAT_MIN_HEIGHT,

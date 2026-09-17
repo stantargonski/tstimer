@@ -250,6 +250,9 @@ export const FLOAT_MAX_HEIGHT = 900;
 /** The size a floating stats box and solve list open at. */
 export const STATS_FLOAT = { width: 260, height: 200 };
 export const LIST_FLOAT = { width: 260, height: 320 };
+/** The shortest the floating list is drawn to stay under the clock: its title,
+    picker and tools, the column heads and about three times. */
+export const LIST_FIT_MIN_HEIGHT = 250;
 
 /** How narrow and wide the floating scramble may be dragged, and the width it
     opens at. Wider than the other boxes allow: a megaminx scramble is seven

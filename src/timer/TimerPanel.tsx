@@ -28,7 +28,7 @@ import {
 import type { SnapGuides, SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import {
-  DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, GRAPH_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
+  DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, GRAPH_MIN_HEIGHT, LIST_FIT_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
   RAIL_SPLIT_MIN, SCRAMBLE_FLOAT_MAX_WIDTH, SCRAMBLE_FLOAT_MIN_HEIGHT, SCRAMBLE_FLOAT_MIN_WIDTH,
   SCRAMBLE_FLOAT_WIDTH, STATS_FLOAT, type PanelId, type TimerSettings,
 } from './settings'
@@ -704,11 +704,10 @@ export default function TimerPanel({
       }
   const statsBox = fitPanel(statsStored, frame, { keepOut, minHeight: 110 })
   const listTop = statsFloat ? rectOf(statsBox, frame).bottom + STACK_GAP : frame.top + FIT_GAP
-  const listBox = fitPanel(
-    settings.listBox ?? floatAt(frame, LIST_FLOAT.width, LIST_FLOAT.height, listTop),
-    frame,
-    { keepOut, minHeight: 140 },
-  )
+  const listStored = settings.listBox ?? floatAt(frame, LIST_FLOAT.width, LIST_FLOAT.height, listTop)
+  // Taller than the others' floor: under its title, picker and tools, 140 left
+  // the list itself no room for a single time.
+  const listBox = fitPanel(listStored, frame, { keepOut, minHeight: LIST_FIT_MIN_HEIGHT })
 
   // The scramble, floating: opened centred over the space beside the sidebar,
   // and kept as tall as the scramble in it the same way the stats box is — by
@@ -877,7 +876,9 @@ export default function TimerPanel({
       {railColumn && (
         <aside
           ref={railRef}
-          className={settings.flatSidebar ? 'timer-rail flat' : 'timer-rail'}
+          // Without the list there is nothing to fill the column below the
+          // stats, so the sidebar ends where they do.
+          className={`timer-rail${settings.flatSidebar ? ' flat' : ''}${listDocked ? '' : ' short'}`}
           style={{ flexBasis: settings.railWidth }}
         >
           {statsDocked && (
@@ -1136,6 +1137,7 @@ export default function TimerPanel({
             height={previewBox.height}
             right={previewBox.right}
             bottom={previewBox.bottom}
+            saved={storedPreview}
             frame={frame}
             snap={snapFor('preview')}
             highlight={matched('preview')}
@@ -1168,6 +1170,7 @@ export default function TimerPanel({
             height={graphBox.height}
             right={graphBox.right}
             bottom={graphBox.bottom}
+            saved={storedGraph}
             frame={frame}
             snap={snapFor('graph')}
             highlight={matched('graph')}
@@ -1191,6 +1194,7 @@ export default function TimerPanel({
             className={settings.flatScramble ? 'scramble-float flat' : 'scramble-float'}
             title="scramble"
             box={scrambleBox}
+            saved={scrambleStored}
             frame={frame}
             snap={snapFor('scramble')}
             highlight={matched('scramble')}
@@ -1218,6 +1222,7 @@ export default function TimerPanel({
             className="stats-float"
             title="stats"
             box={statsBox}
+            saved={statsStored}
             frame={frame}
             snap={snapFor('stats')}
             highlight={matched('stats')}
@@ -1226,7 +1231,7 @@ export default function TimerPanel({
               statsBox: next,
               // A height dragged by hand is the height from then on; a move
               // keeps the height it had, and so keeps fitting.
-              statsFitHeight: settings.statsFitHeight && next.height === statsBox.height,
+              statsFitHeight: settings.statsFitHeight && next.height === statsStored.height,
             })}
             onNaturalHeight={setStatsNatural}
             onDock={toggleStatsFloat}
@@ -1250,6 +1255,7 @@ export default function TimerPanel({
             className="list-float"
             title="solves"
             box={listBox}
+            saved={listStored}
             frame={frame}
             snap={snapFor('list')}
             highlight={matched('list')}

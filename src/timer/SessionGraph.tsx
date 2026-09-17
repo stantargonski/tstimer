@@ -35,6 +35,8 @@ interface SessionGraphProps {
   onSpan: (span: GraphSpan) => void
   /** Every move and resize, as the whole box. */
   onBox: (box: PanelBox) => void
+  /** Its size before it was fitted to the window — see useFloatingPanel. */
+  saved?: { width: number; height: number }
   /** Pinned in place — see useFloatingPanel. */
   locked: boolean
   onLock: () => void
@@ -53,7 +55,7 @@ interface SessionGraphProps {
  */
 export default function SessionGraph({
   solves, decimals, span, width, height, right, bottom, frame, snap, highlight,
-  onSpan, onBox, locked, onLock,
+  onSpan, onBox, saved, locked, onLock,
 }: SessionGraphProps) {
   const panel = useFloatingPanel({
     width,
@@ -67,6 +69,7 @@ export default function SessionGraph({
     minHeight: GRAPH_MIN_HEIGHT,
     maxHeight: GRAPH_MAX_HEIGHT,
     locked,
+    saved,
     onChange: onBox,
   })
 
