@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { formatTime } from './format'
 import { rollingAverages } from './stats'
 import { effectiveMs, mbldPoints, type Penalty, type Solve } from './types'
@@ -69,6 +69,14 @@ export default function SolveList({
     const [sort, setSort] = useState<Sort | null>(null)
     /** The row whose delete button has been pressed once already. */
     const [confirming, setConfirming] = useState<number | null>(null)
+    /** The row whose solve was just copied, for as long as it says so. */
+    const [copiedId, setCopiedId] = useState<number | null>(null)
+
+    useEffect(() => {
+      if (copiedId === null) return
+      const id = setTimeout(() => setCopiedId(null), 1200)
+      return () => clearTimeout(id)
+    }, [copiedId])
 
     // The ao5 and ao12 as they stood after each solve, the way cstimer lists
     // them: what your average *was* at that point, not what it is now. Memoised
@@ -213,11 +221,21 @@ export default function SolveList({
               {/* Time, when, puzzle and scramble together: on its own a time
                   isn't worth pasting anywhere, and the rest is what makes it a
                   claim someone could check. */}
+              {/* Says so once it has, since a copy otherwise does nothing you can
+                  see. Stacked like delete below, so the row doesn't move. A
+                  failed write leaves it saying copy. */}
               <button
                 type="button"
-                onClick={() => void navigator.clipboard.writeText(solveLine(solve, decimals))}
+                className={copiedId === solve.id ? 'confirm copied' : 'confirm'}
+                onClick={() => {
+                  navigator.clipboard.writeText(solveLine(solve, decimals)).then(
+                    () => setCopiedId(solve.id),
+                    () => {},
+                  )
+                }}
               >
-                copy
+                <span aria-live="polite">{copiedId === solve.id ? 'copied' : 'copy'}</span>
+                <span className="confirm-sizer" aria-hidden="true">copied</span>
               </button>
               {/* Asks once. A solve takes one keypress to record and there is no
                   undo behind this, so the second press is the whole safety net —

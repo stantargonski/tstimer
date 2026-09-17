@@ -4024,6 +4024,11 @@ textarea,
 .solve-actions .confirm-sizer {
   visibility: hidden;
 }
+/* A copy that went through. */
+.solve-actions .copied {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 /* The second press of a delete. Filled rather than merely red: the point is
    that it should not look like the button you just pressed. */

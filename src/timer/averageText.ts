@@ -1,4 +1,4 @@
-import { attribution, formatTime } from './format';
+import { formatTime } from './format';
 import { trimCount, trimmedAverage } from './stats';
 import { effectiveMs, type Solve } from './types';
 
@@ -35,7 +35,6 @@ export function averageText(
   solves: Solve[],
   decimals: 2 | 3,
   value?: number,
-  takenAt: Date = new Date(),
 ): string {
   const times = solves.map(effectiveMs);
   const result = value ?? trimmedAverage(times);
@@ -63,12 +62,7 @@ export function averageText(
     return `${number}. ${shown[index].padEnd(timeWidth)}  ${solve.scramble}`.trimEnd();
   });
 
-  // Where the block came from, above the figure it belongs to. A pasted average
-  // outlives the conversation it was pasted into, and "which timer, and when" is
-  // the context that goes missing first — so it leads rather than trails, where
-  // it is read before the number instead of after the last solve nobody scrolled to.
   return [
-    attribution(takenAt),
     `${label}: ${formatTime(result, decimals)}`,
     '',
     ...lines,

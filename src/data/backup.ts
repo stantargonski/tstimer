@@ -6,7 +6,7 @@ import { readTimerSettings, TIMER_SETTINGS_KEY } from '../timer/settings';
 import { migrate as migrateTimer, TIMER_KEY, TIMER_STORE_VERSIONS } from '../timer/storage';
 import { effectiveMs, execMs, type Session, type Solve } from '../timer/types';
 import { eventOf } from '../timer/events';
-import { attribution, dateStamp, formatTime, type Decimals } from '../timer/format';
+import { dateStamp, formatTime, type Decimals } from '../timer/format';
 import { APPEARANCE_KEY, readAppearance } from '../theme/theme';
 import { KEYMAP_KEY, readKeymap } from '../keys/keymap';
 import {
@@ -283,36 +283,27 @@ export function sessionCsv(session: Session): string {
 }
 
 /**
- * One solve as a line you can paste somewhere.
+ * One solve as two lines you can paste somewhere: when, then the puzzle, the
+ * time and the scramble.
  *
- * Time, when, what puzzle, and the scramble — the four things that turn a
- * number into a claim someone else can check. The date comes from the solve's
- * own id, which is the millisecond it stopped, and it is written in local time
- * because that is the day you remember solving on.
+ * The four things that turn a number into a claim someone else can check. The
+ * date comes from the solve's own id, which is the millisecond it stopped, and
+ * it is written in local time because that is the day you remember solving on.
  */
 export function solveLine(solve: Solve, decimals: Decimals): string {
   const when = new Date(solve.id);
   const stamped = `${when.toLocaleDateString()} ${when.toLocaleTimeString()}`;
-  // Two lines, with the provenance on the first — the same shape and the same
-  // wording as an average block, so a solve and an average pasted into the same
-  // conversation read as having come from the same place.
   return [
-    attribution(),
-    [
-      formatTime(effectiveMs(solve), decimals),
-      stamped,
-      eventOf(solve.event).name,
-      solve.scramble,
-    ].join('  '),
+    stamped,
+    [eventOf(solve.event).name, formatTime(effectiveMs(solve), decimals), solve.scramble].join('  '),
   ].join('\n');
 }
 
 /**
  * A filename-safe stamp: 2026-09-01.
  *
- * The same local date the provenance line inside the file carries. It used to be
- * UTC, which meant an export made late in the evening could be filed under
- * tomorrow while the block inside it said today.
+ * Local rather than UTC: it used to be UTC, which meant an export made late in
+ * the evening could be filed under tomorrow.
  */
 export function stamp(): string {
   return dateStamp();

@@ -13,7 +13,7 @@ import { clockPhase, clockText, isInspecting, penaltyFor } from '../src/timer/di
 import { INSPECT_DNF_MS, INSPECT_MS } from '../src/timer/useTimer';
 import { formatTime } from '../src/timer/format';
 import { averageText } from '../src/timer/averageText';
-import { sessionCsv, solvesCsv } from '../src/data/backup';
+import { sessionCsv, solveLine, solvesCsv } from '../src/data/backup';
 import { newSession, type Solve } from '../src/timer/types';
 import {
   BESIDE_MIN, FIT_GAP, STACK_GAP, clampPlace, clearOf, fitPanel, overlaps,
@@ -138,27 +138,15 @@ check(
 const block = averageText('ao5', sample, 2);
 const lines = block.split('\n');
 
-check(
-  /^From tstimer, taken on \d{4}-\d{2}-\d{2}$/.test(lines[0]),
-  `the block opens by saying where it came from and when, got "${lines[0]}"`,
-);
-check(lines[1] === 'ao5: 13.53', `the average comes next, got "${lines[1]}"`);
-check(lines[2] === '', 'a blank line separates the average from its solves');
-// Provenance, header, blank, one line per solve.
-check(lines.length === sample.length + 3, 'one line per solve, in the order they happened');
-check(
-  averageText('ao5', sample, 2, undefined, new Date(2026, 0, 15))
-    .startsWith('From tstimer, taken on 2026-01-15'),
-  'the provenance line carries the date the block was taken',
-);
-check(
-  block.split('From tstimer').length === 2,
-  'and it is said once, not once at each end',
-);
+check(lines[0] === 'ao5: 13.53', `the block opens with the average, got "${lines[0]}"`);
+check(lines[1] === '', 'a blank line separates the average from its solves');
+// Headline, blank, one line per solve.
+check(lines.length === sample.length + 2, 'one line per solve, in the order they happened');
+check(!block.includes('tstimer'), 'and nothing says where it came from');
 // The reason the headline can be pinned at all: a one-solve window trims away
 // to nothing, so the average of it is not a number worth printing.
 check(
-  averageText('best single', [sample[0]], 2, 12340).split('\n')[1] === 'best single: 12.34',
+  averageText('best single', [sample[0]], 2, 12340).split('\n')[0] === 'best single: 12.34',
   'an explicit headline overrides the trimmed average',
 );
 // An ao5 trims one from each end: the 11.02 and the 15.01, and nothing else.
@@ -166,10 +154,19 @@ check(
   lines.filter((line) => line.includes('(')).length === 2,
   'exactly the trimmed pair is bracketed',
 );
-// Provenance, headline, blank — so the first solve is line 3.
-check(lines[6].includes('(11.02)'), 'the best of the five is bracketed as trimmed');
-check(lines[4].includes('(15.01)'), 'the worst of the five is bracketed as trimmed');
-check(lines[3].includes("R U R' scramble 1"), 'each line carries its own scramble');
+// Headline, blank — so the first solve is line 2.
+check(lines[5].includes('(11.02)'), 'the best of the five is bracketed as trimmed');
+check(lines[3].includes('(15.01)'), 'the worst of the five is bracketed as trimmed');
+check(lines[2].includes("R U R' scramble 1"), 'each line carries its own scramble');
+
+// One solve, copied: when on the first line, then puzzle, time and scramble.
+const copied = solveLine(sample[0], 2).split('\n');
+check(copied.length === 2, `a copied solve is two lines, got ${copied.length}`);
+check(
+  copied[1] === `3x3  12.34  ${sample[0].scramble}`,
+  `the second line is the event, the time and the scramble; got "${copied[1]}"`,
+);
+check(!copied[0].includes('tstimer') && /\d/.test(copied[0]), `the first line is the date and time, got "${copied[0]}"`);
 
 // ---- the floating panels, fitted to the room beside the rail ----
 
