@@ -20,6 +20,10 @@ export type EntryMode = 'timer' | 'typed';
 export const GRAPH_SPANS = [12, 50, 100, 0] as const;
 export type GraphSpan = (typeof GRAPH_SPANS)[number];
 
+/** Every box that can float over the timer, as the lock list names them. */
+export const PANEL_IDS = ['scramble', 'stats', 'list', 'preview', 'graph'] as const;
+export type PanelId = (typeof PANEL_IDS)[number];
+
 export interface TimerSettings {
   schemaVersion: 2;
   /** How long space must be held before the timer arms. */
@@ -123,6 +127,12 @@ export interface TimerSettings {
    */
   statsBox: PanelBox | null;
   listBox: PanelBox | null;
+  /** The scramble out of the bar across the top, into a box of its own. Its
+      height is always what the scramble needs; only its width and place are kept. */
+  scrambleFloating: boolean;
+  scrambleBox: PanelBox | null;
+  /** The floating boxes pinned where they are: no moving, no resizing. */
+  lockedPanels: PanelId[];
   /** Whether the floating stats box is as tall as what is in it. Off from the
       first time its height is dragged by hand. */
   statsFitHeight: boolean;
@@ -202,6 +212,9 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   listFloating: false,
   statsBox: null,
   listBox: null,
+  scrambleFloating: false,
+  scrambleBox: null,
+  lockedPanels: [],
   statsFitHeight: true,
   snapPanels: true,
   mbldCount: 3,
@@ -237,6 +250,14 @@ export const FLOAT_MAX_HEIGHT = 900;
 /** The size a floating stats box and solve list open at. */
 export const STATS_FLOAT = { width: 260, height: 200 };
 export const LIST_FLOAT = { width: 260, height: 320 };
+
+/** How narrow and wide the floating scramble may be dragged, and the width it
+    opens at. Wider than the other boxes allow: a megaminx scramble is seven
+    long rows. Its height follows the scramble, so the floor is one line's worth. */
+export const SCRAMBLE_FLOAT_MIN_WIDTH = 240;
+export const SCRAMBLE_FLOAT_MAX_WIDTH = 1600;
+export const SCRAMBLE_FLOAT_MIN_HEIGHT = 40;
+export const SCRAMBLE_FLOAT_WIDTH = 560;
 
 /** How narrow and wide the docked sidebar may be dragged, and the least of it
     the stats may be given when they share it with the list. */
@@ -355,6 +376,15 @@ export function readTimerSettings(input: unknown): TimerSettings {
       listFloating: bool(parsed.listFloating, false),
       statsBox: box(parsed.statsBox),
       listBox: box(parsed.listBox),
+      scrambleFloating: bool(parsed.scrambleFloating, false),
+      scrambleBox: box(parsed.scrambleBox, {
+        minWidth: SCRAMBLE_FLOAT_MIN_WIDTH,
+        maxWidth: SCRAMBLE_FLOAT_MAX_WIDTH,
+        minHeight: SCRAMBLE_FLOAT_MIN_HEIGHT,
+      }),
+      lockedPanels: Array.isArray(parsed.lockedPanels)
+        ? PANEL_IDS.filter((id) => (parsed.lockedPanels as unknown[]).includes(id))
+        : [],
       statsFitHeight: bool(parsed.statsFitHeight, true),
       snapPanels: bool(parsed.snapPanels, true),
       mbldCount: clamp(parsed.mbldCount, MBLD_MIN, MBLD_MAX, DEFAULT_TIMER_SETTINGS.mbldCount),
@@ -395,12 +425,15 @@ function events(value: unknown): EventId[] {
  * makes the whole box null rather than half of one: a box put back at the top
  * of the column is a better answer than a box with no width.
  */
-function box(value: unknown): PanelBox | null {
+function box(
+  value: unknown,
+  { minWidth = FLOAT_MIN_WIDTH, maxWidth = FLOAT_MAX_WIDTH, minHeight = FLOAT_MIN_HEIGHT } = {},
+): PanelBox | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<Record<keyof PanelBox, unknown>>;
   const read = {
-    width: clamp(raw.width, FLOAT_MIN_WIDTH, FLOAT_MAX_WIDTH, NaN),
-    height: clamp(raw.height, FLOAT_MIN_HEIGHT, FLOAT_MAX_HEIGHT, NaN),
+    width: clamp(raw.width, minWidth, maxWidth, NaN),
+    height: clamp(raw.height, minHeight, FLOAT_MAX_HEIGHT, NaN),
     right: clamp(raw.right, PREVIEW_MARGIN, 4000, NaN),
     bottom: clamp(raw.bottom, PREVIEW_MARGIN, 4000, NaN),
   };

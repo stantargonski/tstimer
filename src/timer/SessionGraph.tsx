@@ -5,6 +5,7 @@ import { linePath, niceStep } from './charts/scale'
 import { useFloatingPanel } from './useFloatingPanel'
 import type { FrameBox, PanelBox } from './panelFit'
 import PanelEdges from './PanelEdges'
+import LockButton from './LockButton'
 import type { SnapOptions } from './panelSnap'
 import {
   GRAPH_MAX_HEIGHT, GRAPH_MAX_WIDTH, GRAPH_MIN_HEIGHT, GRAPH_MIN_WIDTH, GRAPH_SPANS,
@@ -34,6 +35,9 @@ interface SessionGraphProps {
   onSpan: (span: GraphSpan) => void
   /** Every move and resize, as the whole box. */
   onBox: (box: PanelBox) => void
+  /** Pinned in place — see useFloatingPanel. */
+  locked: boolean
+  onLock: () => void
 }
 
 /**
@@ -49,7 +53,7 @@ interface SessionGraphProps {
  */
 export default function SessionGraph({
   solves, decimals, span, width, height, right, bottom, frame, snap, highlight,
-  onSpan, onBox,
+  onSpan, onBox, locked, onLock,
 }: SessionGraphProps) {
   const panel = useFloatingPanel({
     width,
@@ -62,6 +66,7 @@ export default function SessionGraph({
     maxWidth: GRAPH_MAX_WIDTH,
     minHeight: GRAPH_MIN_HEIGHT,
     maxHeight: GRAPH_MAX_HEIGHT,
+    locked,
     onChange: onBox,
   })
 
@@ -138,9 +143,9 @@ export default function SessionGraph({
 
   return (
     <div
-      className={highlight ? 'session-graph size-match' : 'session-graph'}
+      className={`session-graph${highlight ? ' size-match' : ''}${locked ? ' locked' : ''}`}
       style={{ width, height, right, bottom }}
-      title="drag to move"
+      title={locked ? undefined : 'drag to move'}
       onPointerDown={(down) => {
         setHover(null)
         panel.startMove(down)
@@ -149,29 +154,36 @@ export default function SessionGraph({
       onPointerUp={panel.onPointerUp}
       onPointerCancel={panel.onPointerUp}
     >
-      <button
-        type="button"
-        className="preview-grip"
-        title="drag to resize"
-        aria-label="resize the session graph"
-        // Kept from reaching the panel, whose own press starts a move.
-        onPointerDown={(down) => {
-          down.stopPropagation()
-          panel.startResize(down)
-        }}
-      />
+      {!locked && (
+        <button
+          type="button"
+          className="preview-grip"
+          title="drag to resize"
+          aria-label="resize the session graph"
+          // Kept from reaching the panel, whose own press starts a move.
+          onPointerDown={(down) => {
+            down.stopPropagation()
+            panel.startResize(down)
+          }}
+        />
+      )}
 
       <PanelEdges panel={panel} />
 
-      <button
-        type="button"
-        className="graph-span"
-        title="how many of the latest solves to show"
-        onPointerDown={(down) => down.stopPropagation()}
-        onClick={() => onSpan(nextSpan)}
-      >
-        {span === 0 ? 'all' : `last ${span}`}
-      </button>
+      {/* Dim until the pointer is over the panel, both of them: they sit over
+          the corner of the plot where the latest solves land. */}
+      <div className="graph-corner">
+        <LockButton locked={locked} name="session graph" onToggle={onLock} />
+        <button
+          type="button"
+          className="graph-span"
+          title="how many of the latest solves to show"
+          onPointerDown={(down) => down.stopPropagation()}
+          onClick={() => onSpan(nextSpan)}
+        >
+          {span === 0 ? 'all' : `last ${span}`}
+        </button>
+      </div>
 
       {drawn && (
         <div className="chart-wrap">

@@ -131,6 +131,7 @@ check(actionFor(DEFAULT_KEYMAP, press('Comma')) === 'goSettings', ', opens setti
 check(actionFor(DEFAULT_KEYMAP, press('', { key: ',' })) === 'goSettings', 'a bare "," with no code still opens settings');
 check(actionFor(DEFAULT_KEYMAP, press('KeyR')) === 'toggleListFloat', 'r floats the solve list');
 check(actionFor(DEFAULT_KEYMAP, press('KeyT')) === 'toggleStatsFloat', 't floats the stats');
+check(actionFor(DEFAULT_KEYMAP, press('KeyY')) === 'toggleScrambleFloat', 'y floats the scramble');
 check(
   actionFor(DEFAULT_KEYMAP, press('KeyE')) === 'toggleScramble',
   'e keeps its action id, so a key someone saved against it still works',

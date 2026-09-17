@@ -16,6 +16,9 @@ interface FloatingPanelOptions {
   frame: FrameBox
   /** What it pulls to while held — see panelSnap. Absent means it pulls to nothing. */
   snap?: SnapOptions
+  /** Pinned where it is: presses that would move or resize it do nothing, and
+      are left alone so a click on what they landed on still counts. */
+  locked?: boolean
   /**
    * Every drag and resize, as the whole box it leaves behind. One call rather
    * than a size and a place, because a resize from the right or the bottom
@@ -53,13 +56,17 @@ function rounded(box: PanelBox): PanelBox {
  * window that shrinks under a panel is handled there too, at render, rather
  * than here by rewriting the saved position.
  *
+ * A locked panel ignores both, and says so in what it returns, so the edges and
+ * grips drawn for it can stand down too.
+ *
  * Holding ⌥ / Alt places it freely, whatever the snap setting says.
  *
  * Every floating box uses this, so none of them can drift from the others in
  * how it behaves under the pointer.
  */
 export function useFloatingPanel({
-  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, frame, snap, onChange,
+  width, height, right, bottom, minWidth, maxWidth, minHeight, maxHeight, frame, snap, locked = false,
+  onChange,
 }: FloatingPanelOptions) {
   const resizing = useRef<{ x: number; y: number; rect: Rect; edges: Edge[] } | null>(null)
   const moving = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null)
@@ -72,6 +79,7 @@ export function useFloatingPanel({
 
   /** From the top-left corner unless told otherwise — the grip drawn there. */
   function startResize(down: PointerEvent<HTMLElement>, edges: Edge[] = ['left', 'top']) {
+    if (locked) return
     down.preventDefault()
     down.currentTarget.setPointerCapture(down.pointerId)
     resizing.current = {
@@ -80,6 +88,7 @@ export function useFloatingPanel({
   }
 
   function startMove(down: PointerEvent<HTMLElement>) {
+    if (locked) return
     down.preventDefault()
     down.currentTarget.setPointerCapture(down.pointerId)
     moving.current = { x: down.clientX, y: down.clientY, right, bottom }
@@ -171,5 +180,5 @@ export function useFloatingPanel({
     }
   }
 
-  return { startResize, startMove, onPointerMove, onPointerUp }
+  return { locked, startResize, startMove, onPointerMove, onPointerUp }
 }

@@ -1381,6 +1381,12 @@ textarea,
 .app:has(> .topbar-float) .content.flush .head-stats {
   padding-top: 40px;
 }
+/* And the stats' ⧉ with it. In the sidebar it is pinned inside the stats, which
+   move down with the padding; beside the scramble it is pinned to the band
+   itself, whose corner is where the wordmark now is. */
+.app:has(> .topbar-float) .content.flush .head-stats .stats-detach {
+  top: 38px;
+}
 
 .scramble-bar {
   flex: none;
@@ -3072,6 +3078,82 @@ textarea,
 .float-box .rail-empty {
   padding: 12px 6px;
 }
+/* The locked title bars say so by not offering to move. */
+.float-box.locked .float-title,
+.scramble-preview.locked .preview-title {
+  cursor: default;
+}
+.session-graph.locked,
+.session-graph.locked:active {
+  cursor: default;
+}
+
+/* The padlock beside the ⧉ and ⟲ at the end of a title bar — see LockButton.
+   It takes the far end, and the button after it sits against it. */
+.panel-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  line-height: 1;
+  opacity: 0.6;
+}
+.panel-lock:hover,
+.panel-lock.on {
+  opacity: 1;
+}
+.panel-lock:hover {
+  color: var(--text);
+}
+.float-title .panel-lock,
+.preview-title .panel-lock {
+  margin-left: auto;
+}
+.float-title .panel-lock + .float-dock,
+.preview-title .panel-lock + .preview-reset {
+  margin-left: 0;
+}
+
+/* ----- the scramble, floating ----- */
+/* The bar inside the box keeps its layout and loses its own panel: the box is
+   the panel now. */
+.scramble-float .scramble-bar {
+  padding: 0;
+  border: 0;
+}
+.scramble-float.flat {
+  background: none;
+  backdrop-filter: none;
+  border-color: transparent;
+}
+/* Locked, the box is the scramble and nothing else. The padlock waits in the
+   corner, out of sight until the pointer comes looking for it. */
+.float-box.bare .bare-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.float-box.bare:hover .bare-lock,
+.float-box.bare .bare-lock:focus-visible {
+  opacity: 1;
+}
+/* The ⧉ that floats the docked scramble, in the bar's top-right corner. */
+.scramble-detach {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+}
+
 /* The ⧉ that takes the stats out of the sidebar, in the corner the table's
    header row leaves empty. */
 .rail-stats .stats-detach,
@@ -3149,13 +3231,21 @@ textarea,
   fill: var(--accent);
   opacity: 1;
 }
-/* Dim until the pointer is over the panel: it sits over the corner of the plot
-   where the latest solves land. */
-.graph-span {
+/* The padlock and the span pill, in the plot's top-right corner. Dim until the
+   pointer is over the panel: they sit over where the latest solves land. */
+.graph-corner {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+.session-graph:hover .graph-corner { opacity: 1; }
+.graph-span {
   padding: 1px 8px;
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -3164,10 +3254,7 @@ textarea,
   font-size: calc(11px * var(--font-scale));
   font-weight: 700;
   cursor: pointer;
-  opacity: 0.55;
-  transition: opacity var(--dur) var(--ease);
 }
-.session-graph:hover .graph-span { opacity: 1; }
 .graph-span:hover { color: var(--text); }
 /* .chart-tip on one line: there is room for the solve, not the whole card. */
 .graph-tip {

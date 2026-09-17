@@ -7,6 +7,7 @@ import { PREVIEW_MAX, PREVIEW_MIN } from './settings'
 import { useFloatingPanel } from './useFloatingPanel'
 import type { FrameBox, PanelBox } from './panelFit'
 import PanelEdges from './PanelEdges'
+import LockButton from './LockButton'
 import type { SnapOptions } from './panelSnap'
 
 interface ScramblePreviewProps {
@@ -22,6 +23,9 @@ interface ScramblePreviewProps {
   highlight: boolean
   /** Every move and resize, as the whole box. */
   onBox: (box: PanelBox) => void
+  /** Pinned in place — see useFloatingPanel. */
+  locked: boolean
+  onLock: () => void
   /** Back to the size and corner it ships at, after a drag has lost it. */
   onReset: () => void
 }
@@ -38,7 +42,7 @@ interface ScramblePreviewProps {
  * useFloatingPanel for why it is placed from the bottom-right.
  */
 export default function ScramblePreview({
-  event, scramble, width, height, right, bottom, frame, snap, highlight, onBox, onReset,
+  event, scramble, width, height, right, bottom, frame, snap, highlight, onBox, locked, onLock, onReset,
 }: ScramblePreviewProps) {
   const size = event.size ?? 3
 
@@ -66,36 +70,41 @@ export default function ScramblePreview({
     maxHeight: PREVIEW_MAX,
     frame,
     snap,
+    locked,
     onChange: onBox,
   })
 
   return (
     <div
-      className={highlight ? 'scramble-preview size-match' : 'scramble-preview'}
+      className={`scramble-preview${highlight ? ' size-match' : ''}${locked ? ' locked' : ''}`}
       style={{ width, height, right, bottom }}
     >
-      <button
-        type="button"
-        className="preview-grip"
-        title="drag to resize"
-        aria-label="resize the scramble preview"
-        onPointerDown={panel.startResize}
-        onPointerMove={panel.onPointerMove}
-        onPointerUp={panel.onPointerUp}
-        onPointerCancel={panel.onPointerUp}
-      />
+      {!locked && (
+        <button
+          type="button"
+          className="preview-grip"
+          title="drag to resize"
+          aria-label="resize the scramble preview"
+          onPointerDown={panel.startResize}
+          onPointerMove={panel.onPointerMove}
+          onPointerUp={panel.onPointerUp}
+          onPointerCancel={panel.onPointerUp}
+        />
+      )}
 
       <PanelEdges panel={panel} />
 
       <span
         className="preview-title"
-        title="drag to move"
+        title={locked ? undefined : 'drag to move'}
         onPointerDown={panel.startMove}
         onPointerMove={panel.onPointerMove}
         onPointerUp={panel.onPointerUp}
         onPointerCancel={panel.onPointerUp}
       >
         {event.short} scramble
+
+        <LockButton locked={locked} name="scramble preview" onToggle={onLock} />
 
         <button
           type="button"

@@ -22,14 +22,15 @@ import type { AverageView } from './averageText'
 import FloatingBox from './FloatingBox'
 import DragHandle from './DragHandle'
 import {
-  FIT_GAP, STACK_GAP, clearOf, fitPanel, floatAt, rectOf,
+  FIT_GAP, STACK_GAP, boxOf, clearOf, fitPanel, floatAt, rectOf,
   type FrameBox, type PanelBox, type Rect,
 } from './panelFit'
 import type { SnapGuides, SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import {
-  DEFAULT_TIMER_SETTINGS, GRAPH_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN, RAIL_SPLIT_MIN,
-  STATS_FLOAT, type TimerSettings,
+  DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, GRAPH_MIN_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
+  RAIL_SPLIT_MIN, SCRAMBLE_FLOAT_MAX_WIDTH, SCRAMBLE_FLOAT_MIN_HEIGHT, SCRAMBLE_FLOAT_MIN_WIDTH,
+  SCRAMBLE_FLOAT_WIDTH, STATS_FLOAT, type PanelId, type TimerSettings,
 } from './settings'
 import { average, meanExec, meanMemo } from './stats'
 import { formatOf, resultOf, suggestTarget } from './comp'
@@ -149,6 +150,8 @@ export default function TimerPanel({
   const [guides, setGuides] = useState<SnapGuides | null>(null)
   /** How tall the floating stats box is with none of it scrolled away. */
   const [statsNatural, setStatsNatural] = useState<number | null>(null)
+  /** Likewise the floating scramble, which is always as tall as it needs. */
+  const [scrambleNatural, setScrambleNatural] = useState<number | null>(null)
 
   // A resize observer rather than the window's resize event, because stowing the
   // rail changes the room without the window changing at all. It only fires on a
@@ -470,13 +473,18 @@ export default function TimerPanel({
   const statsFloat = settings.showStats && settings.statsFloating
   const listFloat = settings.showSolveList && settings.listFloating
   const anyDocked = statsDocked || listDocked
+  const scrambleDocked = settings.showScramble && !settings.scrambleFloating
+  const scrambleFloat = settings.showScramble && settings.scrambleFloating
   const railShown = anyDocked && !settings.railStowed
   /**
    * The stats alone, with the list floating. There is no list for them to
    * head, so rather than a block of stats over a column of empty sidebar they
    * sit beside the scramble bar — the two one band, as tall as the taller.
+   * With the scramble floating too there is no bar to sit beside, and a band of
+   * stats alone across the top would only push everything else down, so they
+   * keep the sidebar.
    */
-  const statsBand = statsDocked && listFloat
+  const statsBand = statsDocked && listFloat && scrambleDocked
   const railColumn = railShown && !statsBand
   const bandShown = railShown && statsBand
   /** Where the session picker and the tools live: with the solve list, wherever
@@ -526,6 +534,23 @@ export default function TimerPanel({
     say(statsFloating ? 'stats floating' : 'stats back in the sidebar')
   }
 
+  /** The scramble into a box of its own, or back across the top. */
+  function toggleScrambleFloat(): false | void {
+    if (!settings.showScramble) return false
+    const scrambleFloating = !settings.scrambleFloating
+    onSettings({ ...settings, scrambleFloating })
+    say(scrambleFloating ? 'scramble floating' : 'scramble back across the top')
+  }
+
+  const isLocked = (id: PanelId) => settings.lockedPanels.includes(id)
+
+  function toggleLock(id: PanelId) {
+    const lockedPanels = isLocked(id)
+      ? settings.lockedPanels.filter((item) => item !== id)
+      : [...settings.lockedPanels, id]
+    onSettings({ ...settings, lockedPanels })
+  }
+
   function setRailWidth(width: number) {
     const railWidth = Math.round(Math.min(RAIL_MAX, Math.max(RAIL_MIN, width)))
     if (railWidth !== settings.railWidth) onSettings({ ...settings, railWidth })
@@ -569,6 +594,7 @@ export default function TimerPanel({
     toggleGraph,
     toggleListFloat,
     toggleStatsFloat,
+    toggleScrambleFloat,
   }, keymap.enabled && !busy)
 
   /**
@@ -684,8 +710,30 @@ export default function TimerPanel({
     { keepOut, minHeight: 140 },
   )
 
+  // The scramble, floating: opened centred over the space beside the sidebar,
+  // and kept as tall as the scramble in it the same way the stats box is — by
+  // its top staying where it was put.
+  const scrambleHeight = scrambleNatural ?? 120
+  const scrambleSaved = settings.scrambleBox
+  const scrambleWidth = Math.min(SCRAMBLE_FLOAT_WIDTH, frame.width - frame.left - 2 * FIT_GAP)
+  const scrambleLeft = frame.left + (frame.width - frame.left - scrambleWidth) / 2
+  const scrambleStored: PanelBox = !scrambleSaved
+    ? boxOf({
+      left: scrambleLeft,
+      top: frame.top + FIT_GAP,
+      right: scrambleLeft + scrambleWidth,
+      bottom: frame.top + FIT_GAP + scrambleHeight,
+    }, frame)
+    : {
+      ...scrambleSaved,
+      height: scrambleHeight,
+      bottom: scrambleSaved.bottom - (scrambleHeight - scrambleSaved.height),
+    }
+  const scrambleBox = fitPanel(scrambleStored, frame)
+
   // Every box on screen that another can snap to.
   const floating: { id: string; box: PanelBox }[] = [
+    ...(scrambleFloat ? [{ id: 'scramble', box: scrambleBox }] : []),
     ...(previewShown ? [{ id: 'preview', box: previewBox }] : []),
     ...(settings.showGraph ? [{ id: 'graph', box: graphBox }] : []),
     ...(statsFloat ? [{ id: 'stats', box: statsBox }] : []),
@@ -700,6 +748,37 @@ export default function TimerPanel({
         .map((item) => ({ id: item.id, rect: rectOf(item.box, frame) })),
       onGuides: setGuides,
     }
+  }
+
+  /** The scramble and what sits above it, docked across the top or floating. */
+  function scrambleBanner(floatingNow: boolean) {
+    return (
+      <ScrambleBanner
+        scramble={scramble}
+        canGoBack={index > 0}
+        onLast={() => setIndex(index - 1)}
+        onNext={goNext}
+        action={settings.scrambleClick}
+        // The box it floats in is the panel; a second one inside it is a frame
+        // around a frame.
+        flat={floatingNow || settings.flatScramble}
+        mono={settings.monoScramble}
+        showHead={settings.showScrambleHead}
+        scale={settings.scrambleScale}
+        // The bar's bottom edge sizes the text; a floating box's sides are its
+        // width, and its height is whatever the text comes to.
+        onScale={floatingNow ? undefined : (scrambleScale) => onSettings({ ...settings, scrambleScale })}
+        onFloat={floatingNow ? undefined : toggleScrambleFloat}
+        floatTitle={withHint('float the scramble', keymap, 'toggleScrambleFloat')}
+      >
+        {settings.showEventPicker && (
+          <EventPicker value={session.event} onChange={setEvent} selectRef={eventSelect} />
+        )}
+        {event.scramble.kind === 'mbf' && (
+          <MbldCount value={settings.mbldCount} onChange={setMbldCount} />
+        )}
+      </ScrambleBanner>
+    )
   }
 
   /** Whether the box being resized has just matched this one's size. */
@@ -925,27 +1004,7 @@ export default function TimerPanel({
             />
           </aside>
         )}
-        {settings.showScramble && (
-          <ScrambleBanner
-            scramble={scramble}
-            canGoBack={index > 0}
-            onLast={() => setIndex(index - 1)}
-            onNext={goNext}
-            action={settings.scrambleClick}
-            flat={settings.flatScramble}
-            mono={settings.monoScramble}
-            showHead={settings.showScrambleHead}
-            scale={settings.scrambleScale}
-            onScale={(scrambleScale) => onSettings({ ...settings, scrambleScale })}
-          >
-            {settings.showEventPicker && (
-              <EventPicker value={session.event} onChange={setEvent} selectRef={eventSelect} />
-            )}
-            {event.scramble.kind === 'mbf' && (
-              <MbldCount value={settings.mbldCount} onChange={setMbldCount} />
-            )}
-          </ScrambleBanner>
-        )}
+        {scrambleDocked && scrambleBanner(false)}
         </div>
 
         {/* Docked under the scramble, in this column's flow. It used to sit above
@@ -1087,6 +1146,8 @@ export default function TimerPanel({
               previewRight: next.right,
               previewBottom: next.bottom,
             })}
+            locked={isLocked('preview')}
+            onLock={() => toggleLock('preview')}
             // Position only. The size is something you set once to suit your
             // screen; the position is what gets knocked out of place dragging
             // the panel about, so putting it back is what's worth one click.
@@ -1118,11 +1179,40 @@ export default function TimerPanel({
               graphRight: next.right,
               graphBottom: next.bottom,
             })}
+            locked={isLocked('graph')}
+            onLock={() => toggleLock('graph')}
           />
         )}
 
         {/* Held back until the frame is measured: a box that has never been put
             anywhere is placed from the frame's size, which is 0 until then. */}
+        {frame.width > 0 && scrambleFloat && (
+          <FloatingBox
+            className={settings.flatScramble ? 'scramble-float flat' : 'scramble-float'}
+            title="scramble"
+            box={scrambleBox}
+            frame={frame}
+            snap={snapFor('scramble')}
+            highlight={matched('scramble')}
+            onBox={(next) => onSettings({ ...settings, scrambleBox: next })}
+            onDock={toggleScrambleFloat}
+            dockTo="the top"
+            locked={isLocked('scramble')}
+            onLock={() => toggleLock('scramble')}
+            bareWhenLocked
+            widthOnly
+            limits={{
+              minWidth: SCRAMBLE_FLOAT_MIN_WIDTH,
+              maxWidth: SCRAMBLE_FLOAT_MAX_WIDTH,
+              minHeight: SCRAMBLE_FLOAT_MIN_HEIGHT,
+              maxHeight: FLOAT_MAX_HEIGHT,
+            }}
+            onNaturalHeight={setScrambleNatural}
+          >
+            {scrambleBanner(true)}
+          </FloatingBox>
+        )}
+
         {frame.width > 0 && statsFloat && (
           <FloatingBox
             className="stats-float"
@@ -1140,6 +1230,8 @@ export default function TimerPanel({
             })}
             onNaturalHeight={setStatsNatural}
             onDock={toggleStatsFloat}
+            locked={isLocked('stats')}
+            onLock={() => toggleLock('stats')}
             head={toolsIn === 'stats' ? sessionPicker : undefined}
             foot={toolsIn === 'stats' ? tools(true) : undefined}
           >
@@ -1163,6 +1255,8 @@ export default function TimerPanel({
             highlight={matched('list')}
             onBox={(next) => onSettings({ ...settings, listBox: next })}
             onDock={toggleListFloat}
+            locked={isLocked('list')}
+            onLock={() => toggleLock('list')}
             head={sessionPicker}
             foot={tools(true)}
           >

@@ -26,13 +26,17 @@ interface ScrambleBannerProps {
    * hand — so the setting and the edge can never disagree about the size.
    */
   onScale?: (percent: number) => void
+  /** Given, a ⧉ in the bar's corner takes the scramble out into a box of its own. */
+  onFloat?: () => void
+  /** The ⧉'s tooltip, with its key. */
+  floatTitle?: string
   /** The event picker, rendered above the scramble. */
   children?: ReactNode
 }
 
 export default function ScrambleBanner({
   scramble, canGoBack, onLast, onNext, action, flat, mono, showHead = true, scale = 100,
-  onScale, children,
+  onScale, onFloat, floatTitle = 'float the scramble', children,
 }: ScrambleBannerProps) {
   const [copied, setCopied] = useState(false)
   const textRef = useRef<HTMLButtonElement>(null)
@@ -106,6 +110,18 @@ export default function ScrambleBanner({
             : scramble.moves.map((move, index) => <span key={index}>{move}</span>)}
         </button>
       </div>
+
+      {onFloat && (
+        <button
+          type="button"
+          className="rail-icon scramble-detach"
+          aria-label="float the scramble"
+          title={floatTitle}
+          onClick={onFloat}
+        >
+          ⧉
+        </button>
+      )}
 
       {onScale && (
         <DragHandle

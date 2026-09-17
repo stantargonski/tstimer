@@ -357,6 +357,13 @@ export default function SettingsPage({
               <Toggle value={timer.showScramble} onChange={(v) => setTimer('showScramble', v)} />
             </Row>
             <Row
+              label="float the scramble"
+              description="Takes the scramble out of the bar across the top into a box you can move and widen. Lock it and the box's title bar goes, leaving the scramble on its own."
+              keywords="detach undock move scramble banner lock pin"
+            >
+              <Toggle value={timer.scrambleFloating} onChange={(v) => setTimer('scrambleFloating', v)} />
+            </Row>
+            <Row
               label="event picker"
               description="The event dropdown above the scramble. The scramble and its last / next stay put."
               keywords="event type puzzle show hide scramble banner"

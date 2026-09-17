@@ -37,7 +37,7 @@ export type ActionId =
   | 'openSession' | 'goStats' | 'goTimer' | 'goSettings'
   | 'toggleInspection' | 'toggleRail' | 'toggleTopBar' | 'toggleScramble'
   | 'toggleComp' | 'togglePreview' | 'toggleGraph'
-  | 'toggleListFloat' | 'toggleStatsFloat';
+  | 'toggleListFloat' | 'toggleStatsFloat' | 'toggleScrambleFloat';
 
 export type ActionGroup = 'solves' | 'scramble' | 'navigation' | 'toggles';
 
@@ -90,6 +90,10 @@ export const ACTIONS: Action[] = [
     description: 'A compact list in a box of its own, or back into the sidebar.',
   },
   { id: 'toggleStatsFloat', label: 'float the session stats', group: 'toggles' },
+  {
+    id: 'toggleScrambleFloat', label: 'float the scramble', group: 'toggles',
+    description: 'The scramble in a box you can move, or back across the top.',
+  },
 ];
 
 /** Two keys an action may answer to: a primary, and an alternate for the
@@ -134,6 +138,7 @@ export const DEFAULT_KEYMAP: Keymap = {
     toggleGraph: [key('KeyC'), null],
     toggleListFloat: [key('KeyR'), null],
     toggleStatsFloat: [key('KeyT'), null],
+    toggleScrambleFloat: [key('KeyY'), null],
   },
 };
 
