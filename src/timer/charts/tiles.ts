@@ -7,10 +7,17 @@
 export interface TileSpec {
   id: string;
   name: string;
-  /** Only meaningful where memo and execution are timed apart. */
-  splitOnly?: boolean;
+  /**
+   * Limits the box to events that time memo and execution apart, or to those
+   * that don't. Unset shows everywhere.
+   */
+  only?: 'split' | 'unsplit';
 }
 
+/**
+ * Both sets come to eight — the grid steps between 8, 4 and 2 columns and only
+ * ever fills whole rows because of it. Keep them at eight.
+ */
 export const TILES: TileSpec[] = [
   { id: 'solves', name: 'solves' },
   { id: 'time', name: 'time solving' },
@@ -18,8 +25,8 @@ export const TILES: TileSpec[] = [
   { id: 'mean', name: 'mean' },
   { id: 'deviation', name: 'deviation' },
   { id: 'bestAo5', name: 'best ao5' },
-  { id: 'bestAo12', name: 'best ao12' },
-  { id: 'bestAo100', name: 'best ao100' },
-  { id: 'memo', name: 'memo', splitOnly: true },
-  { id: 'exec', name: 'exec', splitOnly: true },
+  { id: 'bestAo12', name: 'best ao12', only: 'unsplit' },
+  { id: 'bestAo100', name: 'best ao100', only: 'unsplit' },
+  { id: 'memo', name: 'memo', only: 'split' },
+  { id: 'exec', name: 'exec', only: 'split' },
 ];

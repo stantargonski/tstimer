@@ -2350,18 +2350,34 @@ textarea,
 .stats-head .session-select {
   margin-left: auto;
 }
-/* Auto-fit rather than a fixed count: the 3BLD tiles are two more than the
-   3x3 ones, and neither layout should be the one that looks wrong. */
+/* Fixed steps of 8, 4 and 2 columns rather than auto-fit: every event shows
+   eight boxes (see tiles.ts), so each step fills whole rows, where auto-fit
+   left a ragged last row at most widths. Keyed on the card's own width, not
+   the window's. The steps are where the widest label, "time solving", still
+   fits on one line. */
+.tiles-frame {
+  container-type: inline-size;
+}
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0;
+  grid-template-columns: repeat(2, 1fr);
+  /* The hairlines are the grid showing through the gaps: one line between
+     boxes, none doubled against the border. */
+  gap: 1px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  /* The tiles own colour rather than the card behind them, so a row that does
-     not divide evenly ends in empty box rather than in a hole. */
-  background: var(--panel-2);
+  background: var(--line);
+}
+@container (min-width: 560px) {
+  .tiles {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@container (min-width: 1060px) {
+  .tiles {
+    grid-template-columns: repeat(8, 1fr);
+  }
 }
 /* One box with hairlines between the figures, rather than a box per figure:
    these are facets of the same session, and drawing them as separate cards
@@ -2370,12 +2386,9 @@ textarea,
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
   padding: 13px 15px;
   background: var(--panel-2);
-  box-shadow: inset -1px 0 var(--line), inset 0 -1px var(--line);
-}
-.tiles > .tile:last-child {
-  box-shadow: inset 0 -1px var(--line);
 }
 .tile-label {
   font-size: calc(13px * var(--font-scale));

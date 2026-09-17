@@ -8,6 +8,8 @@ import type { AverageView } from '../averageText'
 import type { WcaEvent } from '../events'
 import { TILES } from './tiles'
 
+const NONE = { value: NaN, start: -1 }
+
 function Tile({ label, value, note, onOpen }: {
   label: string
   value: string
@@ -42,12 +44,13 @@ export default function SummaryTiles({
 
   // Computed once for the whole set: the best-window search walks the session
   // per size, and at a hundred that is not something to do per render.
+  // Split events don't show the longer averages, so don't search for them.
   const figures = useMemo(() => ({
     bestFive: bestAverageWindow(solves, 5),
-    bestTwelve: bestAverageWindow(solves, 12),
-    bestHundred: bestAverageWindow(solves, 100),
+    bestTwelve: event.split ? NONE : bestAverageWindow(solves, 12),
+    bestHundred: event.split ? NONE : bestAverageWindow(solves, 100),
     singleAt: bestSingleIndex(solves),
-  }), [solves])
+  }), [solves, event.split])
 
   /** A box that opens the solves behind it, when there are any to open. */
   function opener(label: string, window: Solve[] | null, value: number) {
@@ -108,10 +111,12 @@ export default function SummaryTiles({
   }
 
   return (
-    <div className="tiles">
-      {TILES
-        .filter((tile) => event.split || !tile.splitOnly)
-        .map((tile) => render(tile.id))}
+    <div className="tiles-frame">
+      <div className="tiles">
+        {TILES
+          .filter((tile) => !tile.only || tile.only === (event.split ? 'split' : 'unsplit'))
+          .map((tile) => render(tile.id))}
+      </div>
     </div>
   )
 }
