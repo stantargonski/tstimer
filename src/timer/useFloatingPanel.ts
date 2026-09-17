@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import { boxOf, clampPlace, leftEdge, rectOf, type FrameBox, type PanelBox, type Rect } from './panelFit'
 import { snapMove, snapResize, type Edge, type SnapOptions } from './panelSnap'
 import { PREVIEW_MARGIN } from './settings'
@@ -27,10 +27,10 @@ interface FloatingPanelOptions {
       are left alone so a click on what they landed on still counts. */
   locked?: boolean
   /**
-   * Every drag and resize, as the whole box it leaves behind. One call rather
-   * than a size and a place, because a resize from the right or the bottom
-   * changes both — and two calls, each spreading the same settings, would have
-   * the second undo the first.
+   * A drag or resize, once it is let go of, as the whole box it leaves behind.
+   * One call rather than a size and a place, because a resize from the right or
+   * the bottom changes both — and two calls, each spreading the same settings,
+   * would have the second undo the first.
    */
   onChange: (box: PanelBox) => void
 }
@@ -68,6 +68,11 @@ function rounded(box: PanelBox): PanelBox {
  *
  * Holding ⌥ / Alt places it freely, whatever the snap setting says.
  *
+ * While it is held, the panel is drawn from `box` in what this returns rather
+ * than from the settings, which are written once, on release. Written on every
+ * move, each one re-rendered the whole timer — solve list and all — and a drag
+ * ran at a handful of frames a second.
+ *
  * Every floating box uses this, so none of them can drift from the others in
  * how it behaves under the pointer.
  */
@@ -77,6 +82,10 @@ export function useFloatingPanel({
 }: FloatingPanelOptions) {
   const resizing = useRef<{ x: number; y: number; rect: Rect; edges: Edge[] } | null>(null)
   const moving = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null)
+  /** Where the held panel is drawn, and the edges being dragged if it is a resize. */
+  const [live, setLive] = useState<{ box: PanelBox; edges: Edge[] | null } | null>(null)
+  /** What is saved on release — for a move, the saved size rather than the fitted one. */
+  const pending = useRef<PanelBox | null>(null)
 
   /** The snap to apply to this pointer event, or null for a free one. */
   function snapping(event: PointerEvent<HTMLElement>): SnapOptions | null {
@@ -151,7 +160,9 @@ export function useFloatingPanel({
       } else {
         snap?.onGuides(null)
       }
-      onChange(rounded(boxOf(rect, frame)))
+      const box = rounded(boxOf(rect, frame))
+      pending.current = box
+      setLive({ box, edges })
       return
     }
 
@@ -172,7 +183,8 @@ export function useFloatingPanel({
     } else {
       snap?.onGuides(null)
     }
-    onChange({ ...(saved ?? { width, height }), ...next })
+    pending.current = { ...(saved ?? { width, height }), ...next }
+    setLive({ box: { width, height, ...next }, edges: null })
   }
 
   function onPointerUp(up: PointerEvent<HTMLElement>) {
@@ -180,6 +192,12 @@ export function useFloatingPanel({
     resizing.current = null
     moving.current = null
     if (held) snap?.onGuides(null)
+    const box = pending.current
+    pending.current = null
+    // In the same batch as the settings it is saved to, so the panel is never
+    // drawn for a frame back where the drag started.
+    setLive(null)
+    if (box) onChange(box)
     // Checked rather than assumed: a drag started on a child bubbles its release
     // up to a parent that never held the capture.
     if (up.currentTarget.hasPointerCapture(up.pointerId)) {
@@ -187,5 +205,21 @@ export function useFloatingPanel({
     }
   }
 
-  return { locked, startResize, startMove, onPointerMove, onPointerUp }
+  const given = { width, height, right, bottom }
+  let box = given
+  if (live) {
+    const { edges } = live
+    const across = !edges || edges.includes('left') || edges.includes('right')
+    const upDown = !edges || edges.includes('top') || edges.includes('bottom')
+    // A side not being dragged still follows what it is given — the stats and
+    // the scramble are as tall as their content, which a change of width moves.
+    box = {
+      width: across ? live.box.width : given.width,
+      right: across ? live.box.right : given.right,
+      height: upDown ? live.box.height : given.height,
+      bottom: upDown ? live.box.bottom : given.bottom,
+    }
+  }
+
+  return { locked, box, startResize, startMove, onPointerMove, onPointerUp }
 }

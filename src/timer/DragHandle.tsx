@@ -10,6 +10,8 @@ interface DragHandleProps {
   onStart: () => void
   /** How far the pointer has moved along the axis since the drag started. */
   onDrag: (delta: number) => void
+  /** Called once as the drag ends, for an owner that only saves at the end. */
+  onEnd?: () => void
 }
 
 /**
@@ -19,15 +21,17 @@ interface DragHandleProps {
  * It reports distance rather than size, because only its owner knows what the
  * distance is a distance from — a width, a height, or a text size.
  */
-export default function DragHandle({ axis, className, label, onStart, onDrag }: DragHandleProps) {
+export default function DragHandle({ axis, className, label, onStart, onDrag, onEnd }: DragHandleProps) {
   const from = useRef<number | null>(null)
   const along = (event: PointerEvent<HTMLElement>) => (axis === 'x' ? event.clientX : event.clientY)
 
   function end(up: PointerEvent<HTMLElement>) {
+    const held = from.current !== null
     from.current = null
     if (up.currentTarget.hasPointerCapture(up.pointerId)) {
       up.currentTarget.releasePointerCapture(up.pointerId)
     }
+    if (held) onEnd?.()
   }
 
   return (

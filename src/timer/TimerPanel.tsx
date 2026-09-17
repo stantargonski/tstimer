@@ -25,7 +25,7 @@ import {
   FIT_GAP, STACK_GAP, boxOf, clearOf, fitPanel, floatAt, rectOf,
   type FrameBox, type PanelBox, type Rect,
 } from './panelFit'
-import type { SnapGuides, SnapOptions } from './panelSnap'
+import { sameGuides, type SnapGuides, type SnapOptions } from './panelSnap'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import {
   DEFAULT_TIMER_SETTINGS, FLOAT_MAX_HEIGHT, LIST_FLOAT, RAIL_MAX, RAIL_MIN,
@@ -130,6 +130,16 @@ export default function TimerPanel({
   const railStatsRef = useRef<HTMLDivElement>(null)
   /** What the sidebar drag in progress started from: a width, or a height. */
   const dragFrom = useRef(0)
+  /**
+   * The sidebar size a drag has reached, before it is saved. A drag writes it
+   * straight onto the element and saves once on release: saved on every move,
+   * each one re-rendered the whole timer — every solve in the list included —
+   * and then again for each size the frame observer measured along the way.
+   */
+  const liveSize = useRef<number | null>(null)
+  /** The frame observer's measuring, callable once a drag has let go of it. */
+  const measureRef = useRef<() => void>(() => {})
+  const headStatsRef = useRef<HTMLElement>(null)
   /** Whether the clock is running, for the observer below — which is not a
       render, and so can't read `timing` itself. */
   const timingRef = useRef(false)
@@ -165,7 +175,7 @@ export default function TimerPanel({
     const clock = clockRef.current
     const under = underRef.current
     if (!outer || !main || !head || !clock || !under) return
-    const observer = new ResizeObserver(() => {
+    const measure = () => {
       const width = outer.clientWidth
       const height = outer.clientHeight
       // The centre column runs to the frame's right edge, so whatever it
@@ -193,6 +203,12 @@ export default function TimerPanel({
         bottom: Math.round(Math.max(...parts.map((rect) => rect.bottom)) - base.top),
       }
       setKeepOut((prev) => (sameRect(prev, next) ? prev : next))
+    }
+    measureRef.current = measure
+    // Held off while the sidebar is being dragged, which is measured once at the
+    // end instead of at every width it passes through.
+    const observer = new ResizeObserver(() => {
+      if (liveSize.current === null) measure()
     })
     for (const element of [outer, main, head, clock, under]) observer.observe(element)
     return () => observer.disconnect()
@@ -566,16 +582,42 @@ export default function TimerPanel({
     onSettings({ ...settings, lockedPanels })
   }
 
-  function setRailWidth(width: number) {
+  /** The sidebar's width while it is dragged: on the element, not yet saved. */
+  function dragRailWidth(width: number) {
     const railWidth = Math.round(Math.min(RAIL_MAX, Math.max(RAIL_MIN, width)))
-    if (railWidth !== settings.railWidth) onSettings({ ...settings, railWidth })
+    liveSize.current = railWidth
+    const rail = railRef.current
+    if (rail) {
+      rail.style.flexBasis = `${railWidth}px`
+      // The clock keeps clear of the rail, so it moves with it.
+      frameRef.current?.style.setProperty('--rail-w', `${rail.offsetWidth}px`)
+    }
+    if (headStatsRef.current) headStatsRef.current.style.width = `${railWidth}px`
+  }
+
+  function endRailWidth() {
+    const railWidth = liveSize.current
+    liveSize.current = null
+    if (railWidth !== null && railWidth !== settings.railWidth) onSettings({ ...settings, railWidth })
+    measureRef.current()
   }
 
   /** The stats' share of the sidebar, never so much that the list has no room. */
-  function setRailSplit(height: number) {
+  function dragRailSplit(height: number) {
     const room = (railRef.current?.clientHeight ?? 0) - 160
     const railSplit = Math.round(Math.max(RAIL_SPLIT_MIN, Math.min(room, height)))
-    if (railSplit !== settings.railSplit) onSettings({ ...settings, railSplit })
+    liveSize.current = railSplit
+    const stats = railStatsRef.current
+    if (stats) {
+      stats.style.height = `${railSplit}px`
+      stats.style.overflowY = 'auto'
+    }
+  }
+
+  function endRailSplit() {
+    const railSplit = liveSize.current
+    liveSize.current = null
+    if (railSplit !== null && railSplit !== settings.railSplit) onSettings({ ...settings, railSplit })
   }
 
   useHotkeys(keymap, {
@@ -757,7 +799,7 @@ export default function TimerPanel({
       others: floating
         .filter((item) => item.id !== id)
         .map((item) => ({ id: item.id, rect: rectOf(item.box, frame) })),
-      onGuides: setGuides,
+      onGuides: (next) => setGuides((prev) => (sameGuides(prev, next) ? prev : next)),
     }
   }
 
@@ -928,7 +970,8 @@ export default function TimerPanel({
               className="rail-split"
               label="drag to share the sidebar between the stats and the list"
               onStart={() => { dragFrom.current = railStatsRef.current?.offsetHeight ?? 0 }}
-              onDrag={(delta) => setRailSplit(dragFrom.current + delta)}
+              onDrag={(delta) => dragRailSplit(dragFrom.current + delta)}
+              onEnd={endRailSplit}
             />
           )}
 
@@ -979,7 +1022,8 @@ export default function TimerPanel({
             className="rail-edge"
             label="drag to resize the sidebar"
             onStart={() => { dragFrom.current = railRef.current?.offsetWidth ?? settings.railWidth }}
-            onDrag={(delta) => setRailWidth(dragFrom.current + delta)}
+            onDrag={(delta) => dragRailWidth(dragFrom.current + delta)}
+            onEnd={endRailWidth}
           />
         </aside>
       )}
@@ -989,6 +1033,7 @@ export default function TimerPanel({
         <div className="head-row">
         {bandShown && (
           <aside
+            ref={headStatsRef}
             className={settings.flatSidebar ? 'head-stats flat' : 'head-stats'}
             style={{ width: settings.railWidth }}
           >
@@ -1013,7 +1058,8 @@ export default function TimerPanel({
               className="rail-edge"
               label="drag to resize the stats"
               onStart={() => { dragFrom.current = settings.railWidth }}
-              onDrag={(delta) => setRailWidth(dragFrom.current + delta)}
+              onDrag={(delta) => dragRailWidth(dragFrom.current + delta)}
+              onEnd={endRailWidth}
             />
           </aside>
         )}

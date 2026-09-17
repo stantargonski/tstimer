@@ -80,7 +80,7 @@ export default function ScramblePreview({
   return (
     <div
       className={`scramble-preview${highlight ? ' size-match' : ''}${locked ? ' locked' : ''}`}
-      style={{ width, height, right, bottom }}
+      style={panel.box}
     >
       {!locked && (
         <button

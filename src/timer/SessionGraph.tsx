@@ -76,8 +76,9 @@ export default function SessionGraph({
   /** Which solve in the window the pointer is nearest, or null when it is off the plot. */
   const [hover, setHover] = useState<number | null>(null)
 
-  const plotWidth = width - INSET * 2
-  const plotHeight = height - INSET * 2
+  // From the panel rather than the props, so a resize redraws as it goes.
+  const plotWidth = panel.box.width - INSET * 2
+  const plotHeight = panel.box.height - INSET * 2
 
   // The timer re-renders on every tick of a running clock, and none of this
   // changes unless a solve or the panel does.
@@ -147,7 +148,7 @@ export default function SessionGraph({
   return (
     <div
       className={`session-graph${highlight ? ' size-match' : ''}${locked ? ' locked' : ''}`}
-      style={{ width, height, right, bottom }}
+      style={panel.box}
       title={locked ? undefined : 'drag to move'}
       onPointerDown={(down) => {
         setHover(null)

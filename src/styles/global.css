@@ -1125,6 +1125,14 @@ textarea,
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
+/* Rows scrolled out of sight skip layout. Dragging the sidebar's width lays the
+   list out again at every step, and in a long session nearly all of that work
+   was rows nobody could see. `auto` keeps each row's last measured height, so
+   the scroll length doesn't jump as rows come into view. */
+.solve-list > li:not(.solve-head) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
+}
 /* The floating list: three columns rather than four, and tighter rows, so it
    reads in a box a good deal narrower than the sidebar. */
 .solve-list.compact .solve-head,

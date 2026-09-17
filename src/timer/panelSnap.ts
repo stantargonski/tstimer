@@ -27,6 +27,16 @@ export interface SnapGuides {
   matched: string[];
 }
 
+/** Whether two sets of guides draw the same thing, so an unchanged one can be
+    dropped rather than re-rendering the timer on every move. */
+export function sameGuides(a: SnapGuides | null, b: SnapGuides | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.guides.length === b.guides.length
+    && a.guides.every((guide, i) => guide.axis === b.guides[i].axis && guide.at === b.guides[i].at)
+    && a.matched.length === b.matched.length
+    && a.matched.every((id, i) => id === b.matched[i]);
+}
+
 export interface Other {
   id: string;
   rect: Rect;

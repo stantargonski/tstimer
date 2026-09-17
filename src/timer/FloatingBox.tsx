@@ -110,7 +110,9 @@ export default function FloatingBox({
     <div
       ref={outerRef}
       className={`float-box ${className}${highlight ? ' size-match' : ''}${locked ? ' locked' : ''}${bare ? ' bare' : ''}`}
-      style={{ width: box.width, height: box.height, right: box.right, bottom: box.bottom }}
+      style={{
+        width: panel.box.width, height: panel.box.height, right: panel.box.right, bottom: panel.box.bottom,
+      }}
     >
       <PanelEdges panel={panel} across={widthOnly} />
       {!locked && !widthOnly && (
