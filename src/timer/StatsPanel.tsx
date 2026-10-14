@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime, solveText } from './format'
 import {
-  average, best, bestAverageWindow, bestSingleIndex, mean, meanExec, meanMemo,
+  average, best, bestAverageWindow, bestSingleIndex, mean, meanExec, meanMemo, specLabel, trimFor,
+  type AverageSpec,
 } from './stats'
 import { effectiveMs, type Solve } from './types'
 import type { AverageView } from './averageText'
@@ -14,6 +15,9 @@ interface StatsPanelProps {
     solves: Solve[]
     decimals: 2 | 3
     event: WcaEvent
+    /** The averages to quote, and the trim the long ones take — the settings'. */
+    averages: AverageSpec[]
+    trimPercent: number
     /** Which session these solves came from. Only used to tell a new record
         apart from simply switching to a session that already had one. */
     sessionId: string
@@ -23,7 +27,7 @@ interface StatsPanelProps {
 }
 
 export default function StatsPanel(
-  { solves, decimals, event, sessionId, onOpenAverage }: StatsPanelProps,
+  { solves, decimals, event, averages, trimPercent, sessionId, onOpenAverage }: StatsPanelProps,
 ) {
     const latest = solves.length > 0 ? effectiveMs(solves[solves.length-1]) : NaN
     /** Multi-blind has no averages (WCA 9f12) and its single is cubes and time. */
@@ -46,17 +50,20 @@ export default function StatsPanel(
           current: latest,
           currentText: multi && last ? solveText(last, decimals) : null,
           currentWindow: null as Solve[] | null,
+          trim: undefined as number | undefined,
           record: best(solves),
           recordText: multi && singleAt >= 0 ? solveText(solves[singleAt], decimals) : null,
           recordWindow: singleAt >= 0 ? solves.slice(singleAt, singleAt + 1) : null,
         },
-        ...(multi ? [] : [5, 12, 100]).map((size) => {
-          const record = bestAverageWindow(solves, size)
+        ...(multi ? [] : averages).map((spec) => {
+          const { size } = spec
+          const record = bestAverageWindow(solves, spec, trimPercent)
           return {
-            label: `ao${size}`,
+            label: specLabel(spec),
             currentText: null,
             recordText: null,
-            current: average(solves, size),
+            trim: trimFor(spec, trimPercent),
+            current: average(solves, spec, trimPercent),
             currentWindow: solves.length >= size ? solves.slice(-size) : null,
             record: record.value,
             recordWindow:
@@ -64,7 +71,7 @@ export default function StatsPanel(
           }
         }),
       ]
-    }, [solves, latest, multi, decimals])
+    }, [solves, latest, multi, decimals, averages, trimPercent])
 
     const lit = useNewBests(rows, solves.length, sessionId)
 
@@ -74,6 +81,7 @@ export default function StatsPanel(
       window: Solve[] | null,
       recordOf: string | null,
       shown: string | null = null,
+      trim?: number,
     ) {
       const text = shown ?? formatTime(value, decimals)
       if (!onOpenAverage || !window || Number.isNaN(value)) return text
@@ -82,7 +90,7 @@ export default function StatsPanel(
         <button
           type="button"
           className="ao-open"
-          onClick={() => onOpenAverage({ label: recordOf ?? label, solves: window, value })}
+          onClick={() => onOpenAverage({ label: recordOf ?? label, solves: window, value, trim })}
         >
           {text}
         </button>
@@ -103,9 +111,9 @@ export default function StatsPanel(
           {rows.map((row) => (
             <tr key={row.label}>
               <th scope="row">{row.label}</th>
-              <td>{figure(row.label, row.current, row.currentWindow, null, row.currentText)}</td>
+              <td>{figure(row.label, row.current, row.currentWindow, null, row.currentText, row.trim)}</td>
               <td className={lit.has(row.label) ? 'new-best' : undefined}>
-                {figure(row.label, row.record, row.recordWindow, `best ${row.label}`, row.recordText)}
+                {figure(row.label, row.record, row.recordWindow, `best ${row.label}`, row.recordText, row.trim)}
               </td>
             </tr>
           ))}

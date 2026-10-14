@@ -14,7 +14,10 @@ import { INSPECT_DNF_MS, INSPECT_MS } from '../src/timer/useTimer';
 import { formatTime } from '../src/timer/format';
 import { averageText } from '../src/timer/averageText';
 import { sessionCsv, solveLine, solvesCsv } from '../src/data/backup';
-import { newSession, type Solve } from '../src/timer/types';
+import { emptyTimerStore, newSession, type Solve, type TimerStore } from '../src/timer/types';
+import { mergeSessions, moveSession, sortSessions, splitSession, undoSessionOp } from '../src/timer/sessionOps';
+import { readSolve as readStoredSolve } from '../src/timer/storage';
+import { cleanComment, MAX_COMMENT } from '../src/data/limits';
 import {
   BESIDE_MIN, FIT_GAP, STACK_GAP, clampPlace, clearOf, fitPanel, overlaps,
   type FrameBox, type PanelBox, type Rect,
@@ -325,6 +328,94 @@ check(
   widened.rect.top === 150 && widened.rect.bottom === 250,
   'and a side resize leaves the other axis alone',
 );
+
+// ---- comments (#24) ----
+{
+  check(cleanComment('  ') === undefined, 'an empty comment is no comment');
+  check(cleanComment('good\nsolve') === 'good solve', 'a newline is flattened like a name');
+  check(cleanComment('x'.repeat(500))?.length === MAX_COMMENT, 'a comment is capped at 200');
+  check(cleanComment(42) === undefined, 'a comment that is not text is dropped');
+
+  const stored = readStoredSolve({ ...sample[0], comment: '\u202Elol' }, '333') as Solve;
+  check(stored.comment === 'lol', `a stored comment is cleaned on load, got ${JSON.stringify(stored.comment)}`);
+  const bare = readStoredSolve({ ...sample[0], comment: '' }, '333') as Solve;
+  check(!('comment' in bare), 'an empty stored comment leaves no key');
+
+  const noted = sample.map((solve, index) => (index === 1 ? { ...solve, comment: 'pll skip' } : solve));
+  const text = averageText('ao5', noted, 2);
+  check(text.includes('[pll skip]'), 'a comment rides on its time in the average text');
+  const csv = solvesCsv(noted).split('\n');
+  check(csv[0].endsWith(',scramble,comment'), 'the csv has a comment column last');
+  check(csv[2].endsWith(',pll skip'), 'and the commented solve fills it');
+
+  const mean = averageText('mo3', sample.slice(0, 3), 2, undefined, 0);
+  check(!mean.includes('('), 'a mean marks nothing as trimmed');
+}
+
+// ---- merge, split and order (#25) ----
+{
+  const solve = (id: number): Solve => ({
+    id, ms: 10_000, memoMs: null, penalty: 'none', scramble: '', event: '333',
+  });
+  const a = { ...newSession('A', '333', 1), id: 'a', createdAt: 1, solves: [solve(100), solve(200)] };
+  const b = { ...newSession('B', '222', 2), id: 'b', createdAt: 2, solves: [solve(150), solve(200), solve(300)] };
+  const c = { ...newSession('C', '444', 3), id: 'c', createdAt: 3, solves: [] };
+  const store: TimerStore = { ...emptyTimerStore(), sessions: [a, b, c], activeId: 'b' };
+
+  const merged = mergeSessions(store, 'b', 'a');
+  check(merged !== null, 'b merges into a');
+  if (merged) {
+    const target = merged.store.sessions.find((item) => item.id === 'a')!;
+    check(merged.store.sessions.length === 2, 'the source session is gone');
+    check(target.name === 'A' && target.event === '333', 'the target keeps its name and event');
+    check(
+      target.solves.map((item) => item.id).join(',') === '100,150,200,201,300',
+      `colliding ids are nudged and the result sorted, got ${target.solves.map((item) => item.id).join(',')}`,
+    );
+    check(merged.store.activeId === 'a', 'merging the open session opens the target');
+
+    // A solve timed after the merge must survive its undo.
+    const later = {
+      ...merged.store,
+      sessions: merged.store.sessions.map((item) => (
+        item.id === 'a' ? { ...item, solves: [...item.solves, solve(400)] } : item
+      )),
+    };
+    const undone = undoSessionOp(later, merged.undo);
+    check(undone !== null, 'a merge can be undone');
+    if (undone) {
+      const back = undone.store.sessions
+      check(back.map((item) => item.id).join(',') === 'a,b,c', 'the source goes back where it was');
+      check(back[0].solves.map((item) => item.id).join(',') === '100,200,400', 'the target loses only what moved');
+      check(back[1].solves.length === 3 && back[1].solves[1].id === 200, 'the source gets its own ids back');
+      check(undone.store.activeId === 'b', 'and is open again');
+      check(undoSessionOp(undone.store, merged.undo) === null, 'a second undo of the same merge does nothing');
+    }
+  }
+  check(mergeSessions(store, 'a', 'a') === null, 'a session cannot merge into itself');
+
+  const split = splitSession(store, 'b', 200);
+  check(split !== null, 'b splits at its second solve');
+  if (split) {
+    const [, head, tail] = split.store.sessions;
+    check(head.solves.length === 1 && tail.solves.length === 2, 'from that solve on moves');
+    check(tail.name === 'B (2)' && tail.event === '222', 'the new session is "B (2)" with the same event');
+    check(split.store.sessions.length === 4, 'and sits right after the original');
+    const undone = undoSessionOp(split.store, split.undo);
+    check(
+      undone?.store.sessions.length === 3 && undone.store.sessions[1].solves.length === 3,
+      'undoing a split puts every solve back',
+    );
+  }
+  check(splitSession(store, 'b', 150) === null, 'splitting at the first solve does nothing');
+
+  check(moveSession(store, 'a', 1).sessions.map((item) => item.id).join('') === 'bac', 'a moves down one');
+  check(moveSession(store, 'a', -1) === store, 'the first cannot move up');
+  check(sortSessions(store, 'solves').sessions.map((item) => item.id).join('') === 'bac', 'most solves first');
+  check(sortSessions(store, 'newest').sessions.map((item) => item.id).join('') === 'cba', 'newest first');
+  check(sortSessions(store, 'lastSolved').sessions.map((item) => item.id).join('') === 'bac', 'last solved first, empty last');
+  check(sortSessions({ ...store, sessions: [b, c, a] }, 'name').sessions.map((item) => item.id).join('') === 'abc', 'by name');
+}
 
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);

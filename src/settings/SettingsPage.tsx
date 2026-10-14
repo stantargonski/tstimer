@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import CsTimerImport from './CsTimerImport'
+import AveragesField from './AveragesField'
+import SessionsManager from './SessionsManager'
 import { BackupPanel, DeleteEverything, ImportUndo, SnapshotRestore } from './DataSection'
 import TimerPreview from './TimerPreview'
 import ThemeEditor from './ThemeEditor'
@@ -13,6 +15,10 @@ import {
 } from '../theme/theme'
 import { clearBackground, downscale, putBackground } from '../theme/imageStore'
 import { SCALE_MAX, SCALE_MIN, type TimerSettings } from '../timer/settings'
+import { TRIM_PERCENT_MAX } from '../timer/stats'
+import { exportCsTimer } from '../timer/cstimer'
+import { downloadText, stamp } from '../data/backup'
+import { flushPendingSaves } from '../data/persist'
 import type { TimerStore } from '../timer/types'
 
 /**
@@ -42,6 +48,7 @@ const TABS: { id: TabId; name: string; subs: { id: string; name: string }[] }[] 
       { id: 'clock', name: 'clock' },
       { id: 'entry', name: 'entry' },
       { id: 'scramble', name: 'scramble' },
+      { id: 'stats', name: 'stats' },
       { id: 'preview', name: 'floating panels' },
     ],
   },
@@ -65,6 +72,7 @@ const TABS: { id: TabId; name: string; subs: { id: string; name: string }[] }[] 
     // only then the ways of undoing things — the one with no undo last.
     subs: [
       { id: 'backup', name: 'backup' },
+      { id: 'sessions', name: 'sessions' },
       { id: 'cstimer', name: 'csTimer' },
       { id: 'reset', name: 'reset' },
     ],
@@ -568,14 +576,66 @@ export default function SettingsPage({
           />
         )
 
+      case 'stats':
+        return (
+          <>
+            <Row
+              label="averages"
+              description="What the stats quote, shortest first. Type ao50 or mo3 and press Enter to add one; up to six. The first two are the solve list's columns and the figures under the clock."
+              keywords="ao5 ao12 ao100 mean mo3 average rolling custom"
+            >
+              <AveragesField value={timer.averages} onChange={(next) => setTimer('averages', next)} />
+            </Row>
+            <Row
+              label="trim for long averages"
+              description="Percent dropped from each end of an average of 20 or more. Shorter averages always drop exactly one each end, as the WCA does. Means drop nothing."
+              keywords="trim percent ao100 drop best worst"
+            >
+              <Stepper
+                value={timer.trimPercent} min={0} max={TRIM_PERCENT_MAX} step={1}
+                format={(value) => `${value}%`}
+                onChange={(value) => setTimer('trimPercent', value)}
+              />
+            </Row>
+          </>
+        )
+
       case 'backup':
         return <BackupPanel />
 
+      case 'sessions':
+        return (
+          <Searchable label="sessions" keywords="sessions merge split sort order reorder move">
+            <SessionsManager store={timerStore} onStore={onTimerStore} />
+          </Searchable>
+        )
+
       case 'cstimer':
         return (
-          <Searchable label="import from csTimer" keywords="cstimer import txt sessions solves">
-            <CsTimerImport store={timerStore} onImport={onTimerStore} onOpenTimer={onOpenTimer} />
-          </Searchable>
+          <>
+            <Searchable label="import from csTimer" keywords="cstimer import txt sessions solves">
+              <CsTimerImport store={timerStore} onImport={onTimerStore} onOpenTimer={onOpenTimer} />
+            </Searchable>
+            <Row
+              label="export for csTimer"
+              description="Every session as a file csTimer's Import from file reads: times, penalties, scrambles, comments and dates. Multi-blind results go in the comment."
+              keywords="cstimer export txt download sessions solves"
+            >
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // The export reads the store this page holds, but anything
+                    // still waiting to be saved goes first all the same.
+                    flushPendingSaves()
+                    downloadText(`cstimer-${stamp()}.txt`, exportCsTimer(timerStore), 'text/plain')
+                  }}
+                >
+                  export
+                </button>
+              </div>
+            </Row>
+          </>
         )
 
       case 'reset':

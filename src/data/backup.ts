@@ -261,7 +261,7 @@ function seconds(ms: number | null): string {
  */
 export function solvesCsv(solves: Solve[]): string {
   const rows = [
-    ['no', 'event', 'time', 'penalty', 'effective', 'memo', 'exec', 'date', 'scramble'],
+    ['no', 'event', 'time', 'penalty', 'effective', 'memo', 'exec', 'date', 'scramble', 'comment'],
     ...solves.map((solve, index) => [
       String(index + 1),
       solve.event,
@@ -272,6 +272,7 @@ export function solvesCsv(solves: Solve[]): string {
       seconds(execMs(solve)),
       new Date(solve.id).toISOString(),
       solve.scramble,
+      solve.comment ?? '',
     ]),
   ];
   return rows.map((row) => row.map(csvCell).join(',')).join('\n');

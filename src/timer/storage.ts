@@ -1,4 +1,4 @@
-import { cleanName, cleanScramble, isSaneDate, isSaneMs } from '../data/limits';
+import { cleanComment, cleanName, cleanScramble, isSaneDate, isSaneMs } from '../data/limits';
 import { DEFAULT_EVENT, isEventId, RELAY_CHOICES, type EventId } from './events';
 import {
   emptyTimerStore, type MbldResult, type Session, type Solve, type TimerStore,
@@ -130,7 +130,7 @@ function readEvent(session: { event?: unknown; mode?: unknown }): EventId {
  * all; null is correct. Anything before v4 has no event of its own, so it takes
  * the session's — which is exactly what every reader used to assume.
  */
-function readSolve(value: unknown, sessionEvent: EventId): unknown {
+export function readSolve(value: unknown, sessionEvent: EventId): unknown {
   if (!value || typeof value !== 'object') return value;
   const solve = value as Partial<Solve>;
 
@@ -146,6 +146,10 @@ function readSolve(value: unknown, sessionEvent: EventId): unknown {
   const mbld = readMbld(solve.mbld);
   if (mbld) built.mbld = mbld;
   else delete built.mbld;
+
+  const comment = cleanComment(solve.comment);
+  if (comment) built.comment = comment;
+  else delete built.comment;
 
   return built;
 }

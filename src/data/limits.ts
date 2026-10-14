@@ -29,6 +29,9 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 /** Long enough for any name worth having, short enough to draw in a row. */
 export const MAX_NAME = 60;
 
+/** A solve's comment: a sentence or two, the length csTimer users write. */
+export const MAX_COMMENT = 200;
+
 /** A 7x7 WCA scramble is about 500 characters; a 5BLD one with a rotation, less. */
 export const MAX_SCRAMBLE = 1000;
 
@@ -84,19 +87,30 @@ function isDeceptive(code: number): boolean {
  * newline breaking the layout, or a name long enough to push every other column
  * off the screen.
  */
-export function cleanName(value: unknown, fallback: string): string {
+export function cleanName(value: unknown, fallback: string, max = MAX_NAME): string {
   if (typeof value !== 'string') return fallback;
 
   // Cut before inspecting, not after: a name arriving as ten megabytes of text
   // is refused for the price of a slice rather than a walk.
   let flat = '';
-  for (const character of value.slice(0, MAX_NAME * 4)) {
+  for (const character of value.slice(0, max * 4)) {
     flat += isDeceptive(character.codePointAt(0) ?? 0) ? ' ' : character;
   }
 
   flat = flat.replace(/\s+/g, ' ').trim();
   if (flat === '') return fallback;
-  return flat.length > MAX_NAME ? `${flat.slice(0, MAX_NAME)}…` : flat;
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
+ * A solve's comment, cleaned the way a name is, or undefined when there is
+ * nothing left — so a solve with no comment carries no key at all.
+ */
+export function cleanComment(value: unknown): string | undefined {
+  const clean = cleanName(value, '', MAX_COMMENT);
+  if (clean === '') return undefined;
+  // cleanName marks a cut with an ellipsis past its limit; this one is a hard cap.
+  return clean.length > MAX_COMMENT ? `${clean.slice(0, MAX_COMMENT - 1)}…` : clean;
 }
 
 /**

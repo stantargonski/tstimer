@@ -3,7 +3,7 @@
  * with the averages and personal bests they carry.
  */
 
-import { rollingAverages } from '../stats';
+import { rollingAverages, type AverageSpec } from '../stats';
 import { effectiveMs, type Solve } from '../types';
 import type { GraphSpan } from '../settings';
 
@@ -12,14 +12,11 @@ export interface GraphSeries {
       the way the solve list does. */
   offset: number;
   times: number[];
-  ao5: number[];
-  ao12: number[];
+  /** One line per average asked for, aligned with `times`. */
+  averages: number[][];
   /** Whether each solve was the session's best at the moment it was done. */
   isPb: boolean[];
 }
-
-/** The widest average drawn, less one: how far before the window it reaches. */
-const LEAD = 12 - 1;
 
 /**
  * The window, and everything drawn over it.
@@ -30,9 +27,16 @@ const LEAD = 12 - 1;
  * solve inside the window is only a PB if it beat everything before it in the
  * session, not merely everything before it on screen.
  */
-export function graphSeries(solves: Solve[], span: GraphSpan): GraphSeries {
+export function graphSeries(
+  solves: Solve[],
+  span: GraphSpan,
+  averages: AverageSpec[] = [{ kind: 'ao', size: 5 }, { kind: 'ao', size: 12 }],
+  trimPercent?: number,
+): GraphSeries {
   const offset = span === 0 ? 0 : Math.max(0, solves.length - span);
-  const start = Math.max(0, offset - LEAD);
+  // The widest average drawn, less one: how far before the window it reaches.
+  const lead = Math.max(0, ...averages.map((spec) => spec.size - 1));
+  const start = Math.max(0, offset - lead);
   const context = solves.slice(start);
   const skip = offset - start;
 
@@ -51,8 +55,7 @@ export function graphSeries(solves: Solve[], span: GraphSpan): GraphSeries {
   return {
     offset,
     times,
-    ao5: rollingAverages(context, 5).slice(skip),
-    ao12: rollingAverages(context, 12).slice(skip),
+    averages: averages.map((spec) => rollingAverages(context, spec, trimPercent).slice(skip)),
     isPb,
   };
 }

@@ -12,15 +12,15 @@ interface AverageDetailProps extends AverageView {
 }
 
 export default function AverageDetail(
-  { label, solves, value, decimals, onClose }: AverageDetailProps,
+  { label, solves, value, trim, decimals, onClose }: AverageDetailProps,
 ) {
   const box = useRef<HTMLTextAreaElement>(null)
   const sheet = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
 
   const text = useMemo(
-    () => averageText(label, solves, decimals, value),
-    [label, solves, decimals, value],
+    () => averageText(label, solves, decimals, value, trim),
+    [label, solves, decimals, value, trim],
   )
 
   // Already selected on the way in, so the fastest way out of here is Ctrl+C —

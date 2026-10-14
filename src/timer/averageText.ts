@@ -28,6 +28,11 @@ export interface AverageView {
    * worth quoting at all. Left out, the average is computed as before.
    */
   value?: number;
+  /**
+   * How many solves the figure dropped from each end, for the parentheses.
+   * Left out it is the stock trim for that many solves; a mean passes 0.
+   */
+  trim?: number;
 }
 
 export function averageText(
@@ -35,6 +40,7 @@ export function averageText(
   solves: Solve[],
   decimals: 2 | 3,
   value?: number,
+  trim?: number,
 ): string {
   const times = solves.map(effectiveMs);
   const result = value ?? trimmedAverage(times);
@@ -44,14 +50,19 @@ export function averageText(
   const dropped = new Set<number>();
   if (times.length >= 3) {
     const order = times.map((_, index) => index).sort((a, b) => times[a] - times[b]);
-    const trim = trimCount(times.length);
-    for (const index of order.slice(0, trim)) dropped.add(index);
-    for (const index of order.slice(order.length - trim)) dropped.add(index);
+    const cut = trim ?? trimCount(times.length);
+    if (cut > 0) {
+      for (const index of order.slice(0, cut)) dropped.add(index);
+      for (const index of order.slice(order.length - cut)) dropped.add(index);
+    }
   }
 
+  // A comment rides on the time in brackets, the way csTimer writes it, so a
+  // block pasted from either reads the same.
   const shown = times.map((value, index) => {
     const text = formatTime(value, decimals);
-    return dropped.has(index) ? `(${text})` : text;
+    const note = solves[index].comment ? `[${solves[index].comment}]` : '';
+    return dropped.has(index) ? `(${text})${note}` : `${text}${note}`;
   });
 
   const numWidth = String(solves.length).length;
