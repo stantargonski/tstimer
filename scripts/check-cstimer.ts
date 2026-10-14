@@ -17,9 +17,10 @@
  */
 import { cleanName, cleanScramble, MAX_NAME, MAX_SCRAMBLE } from '../src/data/limits';
 import {
-  applyImport, countSolves, eventFromScramble, looksImported, NEW_SESSION, parseCsTimer,
-  undoImport, type ImportRow,
+  applyImport, countSolves, eventFromScramble, exportCsTimer, looksImported, NEW_SESSION, parseCsTimer,
+  scrTypeOf, undoImport, type ImportRow,
 } from '../src/timer/cstimer';
+import { EVENTS } from '../src/timer/events';
 import { effectiveMs, emptyTimerStore, newSession, newSolve, type TimerStore } from '../src/timer/types';
 
 const failures: string[] = [];
@@ -380,6 +381,76 @@ try {
     ids.length === 3 && ids[0] === SECOND * 1000 && ids[1] === SECOND * 1000 + 1 && ids[2] === (SECOND + 60) * 1000,
     `an undated solve takes its neighbour's date and leaves the rest alone (got ${ids.join(', ')})`,
   );
+}
+
+// ---- comments come across (#24) ----
+{
+  const commented = file.sessions[0].solves.find((solve) => solve.ms === 14_500);
+  check(commented?.comment === 'a comment', `csTimer's comment slot is read, got ${JSON.stringify(commented?.comment)}`);
+  check(!('comment' in file.sessions[0].solves[0]), 'an empty comment slot leaves no key');
+  const store = applyImport(emptyTimerStore(), rowsOf(emptyTimerStore())).store;
+  const imported = store.sessions.flatMap((session) => session.solves).find((solve) => solve.ms === 14_500);
+  check(imported?.comment === 'a comment', 'and lands on the imported solve');
+}
+
+// ---- export to csTimer (#26) ----
+{
+  for (const event of EVENTS) {
+    if (event.group === 'relay') continue;
+    check(
+      eventFromScramble(scrTypeOf(event.id)) === event.id,
+      `${event.id} exports as ${scrTypeOf(event.id)}, which reads back as ${eventFromScramble(scrTypeOf(event.id))}`,
+    );
+  }
+
+  const base = 1_700_000_000_000;
+  const three = {
+    ...newSession('Three', '333', 1),
+    solves: [
+      { ...newSolve(12_340, null, "R U R'", '333'), id: base },
+      { ...newSolve(14_500, null, 'L D', '333', 'plus2'), id: base + 60_000, comment: 'lockup' },
+      { ...newSolve(20_000, null, 'F B', '333', 'dnf'), id: base + 120_000 },
+    ],
+  };
+  const blind = {
+    ...newSession('Blind', '333bf', 2),
+    solves: [{ ...newSolve(60_000, 25_000, 'U2 F2', '333bf'), id: base + 180_000 }],
+  };
+  const multi = {
+    ...newSession('Multi', '333mbf', 3),
+    solves: [
+      { ...newSolve(3_000_000, 1_800_000, 'R / U', '333mbf', 'none', { solved: 8, attempted: 10 }), id: base + 240_000, comment: 'tired' },
+    ],
+  };
+  const store: TimerStore = { ...emptyTimerStore(), sessions: [three, blind, multi], activeId: blind.id };
+  const text = exportCsTimer(store);
+  const raw = JSON.parse(text);
+
+  check(Array.isArray(raw.session1) && raw.session1.length === 3, 'each session is a sessionN array');
+  check(JSON.stringify(raw.session1[1][0]) === '[2000,14500]', 'a +2 keeps its raw time with the flag beside it');
+  check(JSON.stringify(raw.session1[2][0]) === '[-1,20000]', 'a DNF is flagged -1');
+  check(raw.session1[1][2] === 'lockup', 'a comment goes in the comment slot');
+  check(raw.session1[0][3] === base / 1000, 'dates are seconds');
+  check(JSON.stringify(raw.session2[0][0]) === '[0,60000,25000]', 'a memo split is one phase');
+  check(raw.session3[0][2] === 'mbld 8/10; tired', 'a multi-blind result leads the comment');
+  check(typeof raw.properties.sessionData === 'string', 'sessionData is JSON inside the JSON');
+  const data = JSON.parse(raw.properties.sessionData);
+  check(data[2].name === 'Blind' && data[2].opt.scrType === '333ni', 'names and scramble types are written');
+  check(raw.properties.session === 2, 'the open session is the one csTimer opens');
+
+  // And back in: the trip has to be lossless for everything csTimer can hold.
+  const back = parseCsTimer(text);
+  check(back.sessions.length === 3 && back.skipped === 0, 'the export reads back whole');
+  check(back.sessions.map((session) => session.event).join(' ') === '333 333bf 333mbf', 'with every event');
+  const round = applyImport(emptyTimerStore(), back.sessions.map((source) => ({
+    source, include: true, destination: NEW_SESSION, event: source.event, name: source.name,
+  }))).store;
+  const [again3, againBf, againMulti] = round.sessions.slice(-3);
+  check(again3.name === 'Three' && again3.solves[1].penalty === 'plus2' && again3.solves[1].ms === 14_500, '+2 survives');
+  check(again3.solves[1].comment === 'lockup' && again3.solves[2].penalty === 'dnf', 'comment and DNF survive');
+  check(againBf.solves[0].memoMs === 25_000, 'the memo split survives');
+  const mb = againMulti.solves[0];
+  check(mb.mbld?.solved === 8 && mb.mbld.attempted === 10 && mb.comment === 'tired', 'the multi-blind result comes back out of the comment');
 }
 
 if (failures.length > 0) {

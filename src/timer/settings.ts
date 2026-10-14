@@ -1,5 +1,9 @@
 import { isEventId, type EventId } from './events';
 import type { PanelBox } from './panelFit';
+import {
+  AVERAGE_MAX_SIZE, AVERAGE_MIN_SIZE, AVERAGES_MAX, DEFAULT_AVERAGES, DEFAULT_TRIM_PERCENT,
+  sortSpecs, TRIM_PERCENT_MAX, type AverageSpec,
+} from './stats';
 
 /** What the clock shows while a solve is actually running. */
 export type RunningDisplay = 'tenths' | 'seconds' | 'hidden';
@@ -156,6 +160,18 @@ export interface TimerSettings {
    * the other made that impossible to say.
    */
   benchAo5Events: EventId[];
+  /**
+   * The averages and means the stats quote, shortest first: the rail's table,
+   * the stats page's boxes and lines, the figures under the clock and the solve
+   * list's columns all read this rather than a fixed ao5 / ao12 / ao100.
+   */
+  averages: AverageSpec[];
+  /**
+   * How much of an average of twenty or more is trimmed from each end, as a
+   * percentage. Shorter averages always trim exactly one each end — the WCA
+   * rule — whatever this says.
+   */
+  trimPercent: number;
 }
 
 /**
@@ -220,6 +236,8 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   mbldCount: 3,
   benchEvents: DEFAULT_BENCH_EVENTS,
   benchAo5Events: DEFAULT_BENCH_EVENTS,
+  averages: DEFAULT_AVERAGES,
+  trimPercent: DEFAULT_TRIM_PERCENT,
 };
 
 export const TIMER_SETTINGS_KEY = 'timer.settings.v1';
@@ -392,6 +410,8 @@ export function readTimerSettings(input: unknown): TimerSettings {
       benchAo5Events: parsed.benchAo5Events === undefined
         ? bench
         : events(parsed.benchAo5Events),
+      averages: averages(parsed.averages),
+      trimPercent: clamp(parsed.trimPercent, 0, TRIM_PERCENT_MAX, DEFAULT_TRIM_PERCENT),
     };
   } catch {
     return DEFAULT_TIMER_SETTINGS;
@@ -417,6 +437,29 @@ function events(value: unknown): EventId[] {
     if (out.length === BENCH_MAX) break;
   }
   return out;
+}
+
+/**
+ * The averages list out of an untrusted blob: entries that aren't an `ao` or
+ * `mo` of a whole size in bounds are dropped, duplicates too, and the list is
+ * cut at the most the rail will show. Empty is allowed — someone who only wants
+ * singles — but a value that isn't a list at all is the stock three.
+ */
+function averages(value: unknown): AverageSpec[] {
+  if (!Array.isArray(value)) return DEFAULT_AVERAGES;
+
+  const out: AverageSpec[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const { kind, size } = item as Partial<AverageSpec>;
+    if (kind !== 'ao' && kind !== 'mo') continue;
+    if (typeof size !== 'number' || !Number.isInteger(size)) continue;
+    if (size < AVERAGE_MIN_SIZE || size > AVERAGE_MAX_SIZE) continue;
+    if (out.some((spec) => spec.kind === kind && spec.size === size)) continue;
+    out.push({ kind, size });
+    if (out.length === AVERAGES_MAX) break;
+  }
+  return sortSpecs(out);
 }
 
 /**

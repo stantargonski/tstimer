@@ -12,6 +12,7 @@ import {
   type GraphSpan,
 } from './settings'
 import type { Solve } from './types'
+import { specLabel, type AverageSpec } from './stats'
 
 /** The panel's padding plus its border: the gap between its edge and the plot. */
 const INSET = 9
@@ -23,6 +24,9 @@ const LABEL_CHAR = 6
 interface SessionGraphProps {
   solves: Solve[]
   decimals: 2 | 3
+  /** The settings' averages; the first two are drawn, as the rail's columns are. */
+  averages: AverageSpec[]
+  trimPercent: number
   span: GraphSpan
   width: number
   height: number
@@ -54,7 +58,7 @@ interface SessionGraphProps {
  * for a title bar to hold it by.
  */
 export default function SessionGraph({
-  solves, decimals, span, width, height, right, bottom, frame, snap, highlight,
+  solves, decimals, averages, trimPercent, span, width, height, right, bottom, frame, snap, highlight,
   onSpan, onBox, saved, locked, onLock,
 }: SessionGraphProps) {
   const panel = useFloatingPanel({
@@ -83,8 +87,9 @@ export default function SessionGraph({
   // Split in two so a resize, which changes every frame of the drag, only
   // redoes the scaling: the series walks the whole session for its averages,
   // and that changes only when a solve or the span does.
+  const drawnAverages = useMemo(() => averages.slice(0, 2), [averages])
   const scale = useMemo(() => {
-    const series = graphSeries(solves, span)
+    const series = graphSeries(solves, span, drawnAverages, trimPercent)
     let low = Infinity
     let high = -Infinity
     let finite = 0
@@ -113,7 +118,7 @@ export default function SessionGraph({
 
     const labels = lines.map((value) => formatTime(value, decimals))
     return { series, floor, ceiling, lines, labels }
-  }, [solves, span, decimals])
+  }, [solves, span, decimals, drawnAverages, trimPercent])
 
   const drawn = useMemo(() => {
     if (!scale) return null
@@ -138,8 +143,7 @@ export default function SessionGraph({
       innerHeight,
       x,
       y,
-      ao5: linePath(series.ao5, x, y),
-      ao12: linePath(series.ao12, x, y),
+      paths: series.averages.map((line) => linePath(line, x, y)),
     }
   }, [scale, plotWidth, plotHeight])
 
@@ -236,8 +240,9 @@ export default function SessionGraph({
               />
             )}
 
-            <path className="line ao12" d={drawn.ao12} fill="none" />
-            <path className="line ao5" d={drawn.ao5} fill="none" />
+            {drawn.paths.map((path, index) => (
+              <path key={index} className={`line s${index}`} d={path} fill="none" />
+            )).reverse()}
 
             {drawn.series.times.map((value, index) => {
               const key = solves[drawn.series.offset + index].id
@@ -302,7 +307,11 @@ export default function SessionGraph({
             >
               <b>#{drawn.series.offset + at + 1}</b>{' '}
               {formatTime(drawn.series.times[at], decimals)}
-              {' · '}ao5 {formatTime(drawn.series.ao5[at], decimals)}
+              {drawnAverages.length > 0 && (
+                <>
+                  {' · '}{specLabel(drawnAverages[0])} {formatTime(drawn.series.averages[0][at], decimals)}
+                </>
+              )}
             </div>
           )}
         </div>

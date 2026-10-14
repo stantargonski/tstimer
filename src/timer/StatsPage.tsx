@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { formatTime, solveText } from './format'
 import { EVENTS, eventOf, type EventId } from './events'
 import {
-  ao5TrendPerHour, average, bestAverage, bestSingleIndex, durationText, mean, totalTime,
+  ao5TrendPerHour, average, bestAverage, bestSingleIndex, durationText, mean, specLabel, totalTime,
 } from './stats'
 import { activeSession, type Solve, type TimerStore } from './types'
 import TimeChart from './charts/TimeChart'
@@ -13,6 +13,8 @@ import AverageDetail from './AverageDetail'
 import type { AverageView } from './averageText'
 import { applyWindow, RANGE_ALL, windowLabel, type TimeWindow } from './charts/filters'
 import RangePicker from './charts/RangePicker'
+import DailyTable from './charts/DailyTable'
+import SessionsTable from './charts/SessionsTable'
 import { BENCH_MAX, type TimerSettings } from './settings'
 
 /**
@@ -154,7 +156,7 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
       no average to show. */
   function bestAo5For(id: EventId): string {
     if (eventOf(id).scramble.kind === 'mbf') return formatTime(NaN)
-    return formatTime(bestAverage(byEvent.get(id) ?? [], 5), decimals)
+    return formatTime(bestAverage(byEvent.get(id) ?? [], 5, settings.trimPercent), decimals)
   }
 
   /** The best single as it reads in a table — cubes and time for multi-blind. */
@@ -318,6 +320,18 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
         </section>
       )}
 
+      {/* ---- every session, side by side ---- */}
+      <section className="card">
+        <h2 className="panel-title">sessions</h2>
+        <SessionsTable
+          sessions={store.sessions}
+          current={session.id}
+          decimals={decimals}
+          trimPercent={settings.trimPercent}
+          onPick={setSessionId}
+        />
+      </section>
+
       {/* ---- one session, in detail ---- */}
       <section className="card">
         <div className="card-head">
@@ -340,15 +354,19 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
           solves={windowed}
           decimals={decimals}
           event={event}
+          averages={settings.averages}
+          trimPercent={settings.trimPercent}
           onOpenAverage={setDetail}
         />
 
         <h3 className="chart-title">
           every solve
           <span>
-            <i className="key ao5" /> ao5
-            <i className="key ao12" /> ao12
-            <i className="key ao100" /> ao100
+            {settings.averages.map((spec, at) => (
+              <span key={specLabel(spec)} className="chart-key">
+                <i className={`key s${at}`} /> {specLabel(spec)}
+              </span>
+            ))}
             <i className="key pb" /> personal best
           </span>
           <RangePicker
@@ -359,7 +377,12 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
           />
         </h3>
 
-        <TimeChart solves={windowed} decimals={decimals} />
+        <TimeChart
+          solves={windowed}
+          decimals={decimals}
+          averages={settings.averages}
+          trimPercent={settings.trimPercent}
+        />
 
         <p className="chart-note">
           ao5 change per hour spent solving:{' '}
@@ -381,11 +404,25 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
         <Histogram solves={windowed} decimals={decimals} />
       </section>
 
+      {/* ---- the same session, a day at a time ---- */}
+      <section className="card">
+        <h2 className="panel-title">
+          by day <span className="mode-tag">{windowLabel(span)}</span>
+        </h2>
+        <DailyTable
+          solves={windowed}
+          event={event}
+          decimals={decimals}
+          trimPercent={settings.trimPercent}
+        />
+      </section>
+
       {detail && (
         <AverageDetail
           label={detail.label}
           solves={detail.solves}
           value={detail.value}
+          trim={detail.trim}
           decimals={decimals}
           onClose={() => setDetail(null)}
         />

@@ -15,9 +15,10 @@ import {
   applyWindow, DAY, dateInput, inputDate, startOfDay, windowBounds,
 } from '../src/timer/charts/filters';
 import {
-  average, best, bestAverage, bestAverageWindow, bestSingleIndex, mean, rollingAverages,
-  stdev, trimCount, trimmedAverage,
+  average, best, bestAverage, bestAverageWindow, bestSingleIndex, byDay, dayKey, DEFAULT_AVERAGES,
+  mean, parseSpec, rollingAverages, sortSpecs, stdev, trimCount, trimFor, trimmedAverage,
 } from '../src/timer/stats';
+import { DEFAULT_TIMER_SETTINGS, readTimerSettings } from '../src/timer/settings';
 import { graphSeries } from '../src/timer/charts/sessionGraph';
 import type { Penalty, Solve } from '../src/timer/types';
 
@@ -250,8 +251,8 @@ const THIRTY = solvesOf(BASE);
 const last12 = graphSeries(THIRTY, 12);
 eq(last12.offset, 18, 'last 12 of 30 starts at the nineteenth solve');
 eq(last12.times.length, 12, 'and draws twelve of them');
-eq(last12.ao5[0], average(THIRTY.slice(14, 19), 5), 'its first ao5 reaches back before the window');
-eq(last12.ao12[0], average(THIRTY.slice(7, 19), 12), 'as does its first ao12');
+eq(last12.averages[0][0], average(THIRTY.slice(14, 19), 5), 'its first ao5 reaches back before the window');
+eq(last12.averages[1][0], average(THIRTY.slice(7, 19), 12), 'as does its first ao12');
 eq(graphSeries(THIRTY, 0).times.length, 30, 'span 0 draws the whole session');
 eq(graphSeries(THIRTY.slice(0, 5), 50).offset, 0, 'a span wider than the session is all of it');
 
@@ -271,8 +272,8 @@ withDnfs[20] = 'dnf';
 withDnfs[21] = 'dnf';
 const broken = graphSeries(solvesOf(withDnfs), 12);
 check(!Number.isFinite(broken.times[2]), 'a DNF is drawn as one');
-check(!Number.isFinite(broken.ao5[3]), 'two DNFs in an ao5 make it a DNF');
-check(Number.isFinite(broken.ao5[7]), 'and the line picks up once one of them has left the window');
+check(!Number.isFinite(broken.averages[0][3]), 'two DNFs in an ao5 make it a DNF');
+check(Number.isFinite(broken.averages[0][7]), 'and the line picks up once one of them has left the window');
 
 // ---- multi-blind ranks by points, then time (WCA 9f12c) ----
 {
@@ -285,6 +286,81 @@ check(Number.isFinite(broken.ao5[7]), 'and the line picks up once one of them ha
   check(best([quick, big]) === 3_300_000, 'multi-blind: more points beats a faster time');
   check(best([quick, big, tie]) === 3_000_000, 'multi-blind: equal points go to the faster time');
   check(resultOf(FORMATS.bo3, [5000, 4000, Infinity]) === 4000, 'a best-of-3 round is its best attempt');
+}
+
+// ---- custom averages (#20) ----
+{
+  eq(trimCount(12, 20), 1, 'under twenty is one apiece whatever the percentage');
+  eq(trimCount(19, 0), 1, 'and still one at 0%');
+  eq(trimCount(100, 10), 10, 'an ao100 at 10% drops ten apiece');
+  eq(trimCount(100, 0), 1, 'an average never trims fewer than one');
+  eq(trimCount(50, 5), 2, 'an ao50 at 5% drops two apiece');
+  eq(trimFor({ kind: 'mo', size: 100 }), 0, 'a mean trims nothing');
+
+  const RUN = solvesOf([9000, 10_000, 11_000, 12_000, 13_000]);
+  eq(average(RUN.slice(-3), { kind: 'mo', size: 3 }), 12_000, 'mo3 is the plain mean of the last three');
+  eq(average(solvesOf([9000, 'dnf', 11_000]), { kind: 'mo', size: 3 }), Infinity, 'one DNF makes a mean a DNF');
+  eq(average(RUN, { kind: 'ao', size: 5 }), average(RUN, 5), 'a spec and a bare size agree');
+  eq(bestAverage(RUN, { kind: 'mo', size: 3 }), 10_000, 'the best mo3 is the first window');
+  eq(rollingAverages(RUN, { kind: 'mo', size: 3 })[4], 12_000, 'the rolling mo3 ends on the current one');
+
+  // Ten slow solves at the ends of an ao100: 5% absorbs five apiece, 10% all ten.
+  const skewed = solvesOf([
+    ...Array.from({ length: 10 }, () => 5000),
+    ...Array.from({ length: 80 }, () => 10_000),
+    ...Array.from({ length: 10 }, () => 20_000),
+  ]);
+  check(average(skewed, 100) > 10_000, 'at 5% the outliers still pull an ao100');
+  eq(average(skewed, 100, 10), 10_000, 'at 10% they are all trimmed away');
+
+  const ao50 = parseSpec('ao50');
+  check(ao50?.kind === 'ao' && ao50.size === 50, 'ao50 parses');
+  check(parseSpec(' MO3 ')?.kind === 'mo', 'case and spaces are forgiven');
+  check(parseSpec('ao2') === null, 'two is below the floor');
+  check(parseSpec('ao1001') === null, 'a thousand and one is past the ceiling');
+  check(parseSpec('bo3') === null, 'only ao and mo are averages');
+  const sorted = sortSpecs([{ kind: 'mo', size: 5 }, { kind: 'ao', size: 100 }, { kind: 'ao', size: 5 }]);
+  check(
+    sorted.map((spec) => `${spec.kind}${spec.size}`).join(' ') === 'ao5 mo5 ao100',
+    'specs sort shortest first, ao before mo',
+  );
+
+  check(
+    JSON.stringify(DEFAULT_TIMER_SETTINGS.averages) === JSON.stringify(DEFAULT_AVERAGES),
+    'the default list is ao5, ao12, ao100',
+  );
+  const read = readTimerSettings({
+    ...DEFAULT_TIMER_SETTINGS,
+    averages: [
+      { kind: 'ao', size: 50 }, { kind: 'ao', size: 50 }, { kind: 'xo', size: 5 },
+      { kind: 'ao', size: 2 }, { kind: 'mo', size: 3 }, { kind: 'ao', size: 5.5 },
+      { kind: 'ao', size: 5 }, { kind: 'ao', size: 12 }, { kind: 'ao', size: 25 },
+      { kind: 'ao', size: 100 }, { kind: 'ao', size: 1000 },
+    ],
+    trimPercent: 40,
+  });
+  check(read.averages.length === 6, `a stored list is cut at six, got ${read.averages.length}`);
+  check(
+    read.averages.map((spec) => `${spec.kind}${spec.size}`).join(' ') === 'mo3 ao5 ao12 ao25 ao50 ao100',
+    `junk and duplicates are dropped and the rest sorted, got ${read.averages.map((spec) => `${spec.kind}${spec.size}`).join(' ')}`,
+  );
+  eq(read.trimPercent, 20, 'the trim is clamped to 20%');
+  const old = readTimerSettings({ ...DEFAULT_TIMER_SETTINGS, averages: undefined, trimPercent: undefined });
+  check(old.averages.length === 3 && old.trimPercent === 5, 'settings saved before the list default to it');
+  check(readTimerSettings({ ...DEFAULT_TIMER_SETTINGS, averages: [] }).averages.length === 0, 'an empty list stays empty');
+}
+
+// ---- daily stats (#21) ----
+{
+  const at = (day: number, hour: number) => new Date(2026, 9, day, hour).getTime();
+  const solves = [at(1, 9), at(1, 23), at(3, 0), at(3, 12), at(3, 13)].map((id) => ({
+    id, ms: 10_000, memoMs: null, penalty: 'none' as const, scramble: '', event: '333' as const,
+  }));
+  const days = byDay(solves);
+  check(days.length === 2, 'two days with solves are two rows');
+  check(days[0].day === dayKey(at(3, 0)) && days[0].solves.length === 3, 'newest day first, with its three');
+  check(days[1].solves.length === 2, 'late evening stays on its local day');
+  check(days[0].solves[0].id < days[0].solves[1].id, 'a day keeps its solves oldest first');
 }
 
 if (failures.length > 0) {

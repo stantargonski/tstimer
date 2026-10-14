@@ -74,9 +74,86 @@ export function mean(solves: Solve[]): number {
  * they sort to the end. A DNF inside the trimmed-worst slots disappears; one
  * that survives the trim makes the whole average a DNF.
  */
-export function average(solves: Solve[], size: number): number {
+export function average(
+  solves: Solve[],
+  spec: AverageSpec | number,
+  trimPercent = DEFAULT_TRIM_PERCENT,
+): number {
+  const { kind, size } = specOf(spec);
   if (size < 3 || solves.length < size) return NaN;
-  return trimmedAverage(solves.slice(-size).map(effectiveMs));
+  return windowValue(solves.slice(-size).map(effectiveMs), kind, trimPercent);
+}
+
+/**
+ * One figure the stats quote: an average (`ao`, trimmed) or a mean (`mo`,
+ * untrimmed) over the most recent `size` solves.
+ *
+ * Which ones are quoted is the user's: `TimerSettings.averages` holds the list,
+ * and everything that used to say `[5, 12, 100]` reads it instead.
+ */
+export type AverageKind = 'ao' | 'mo';
+export interface AverageSpec {
+  kind: AverageKind;
+  size: number;
+}
+
+/** The list a fresh install quotes, which is what the app always quoted. */
+export const DEFAULT_AVERAGES: AverageSpec[] = [
+  { kind: 'ao', size: 5 },
+  { kind: 'ao', size: 12 },
+  { kind: 'ao', size: 100 },
+];
+
+/** How many figures the list holds, and how long one may be. Six keeps the
+    rail's table a glance; a thousand is the longest csTimer offers. */
+export const AVERAGES_MAX = 6;
+export const AVERAGE_MIN_SIZE = 3;
+export const AVERAGE_MAX_SIZE = 1000;
+
+/** The share trimmed off each end of a long average, as the settings default it. */
+export const DEFAULT_TRIM_PERCENT = 5;
+export const TRIM_PERCENT_MAX = 20;
+
+/** `ao12`, `mo3`. */
+export function specLabel(spec: AverageSpec): string {
+  return `${spec.kind}${spec.size}`;
+}
+
+/**
+ * `ao50` or `mo3` as typed into the settings chip field, or null when it isn't
+ * one. Case and spaces are forgiven; a size out of bounds is not, so the field
+ * can say why it refused rather than quietly clamping 5000 to 1000.
+ */
+export function parseSpec(text: string): AverageSpec | null {
+  const match = /^(ao|mo)\s*(\d{1,5})$/.exec(text.trim().toLowerCase());
+  if (!match) return null;
+  const size = Number(match[2]);
+  if (size < AVERAGE_MIN_SIZE || size > AVERAGE_MAX_SIZE) return null;
+  return { kind: match[1] as AverageKind, size };
+}
+
+/** Shortest first, and an ao before the mo of the same size, so the rail reads
+    in the order the windows grow. */
+export function sortSpecs(specs: AverageSpec[]): AverageSpec[] {
+  return [...specs].sort((a, b) => a.size - b.size || (a.kind === b.kind ? 0 : a.kind === 'ao' ? -1 : 1));
+}
+
+/** A bare number is an ao of that size — every caller from before the list. */
+function specOf(spec: AverageSpec | number): AverageSpec {
+  return typeof spec === 'number' ? { kind: 'ao', size: spec } : spec;
+}
+
+/**
+ * One window's figure. A mean drops nothing, so one DNF in it is a DNF — the
+ * WCA's mean of 3, and csTimer's mo-anything.
+ */
+function windowValue(values: number[], kind: AverageKind, trimPercent: number): number {
+  return kind === 'mo' ? simpleMean(values) : trimmedAverage(values, trimPercent);
+}
+
+/** How many solves a window of this kind drops from each end. */
+export function trimFor(spec: AverageSpec, trimPercent = DEFAULT_TRIM_PERCENT): number {
+  return spec.kind === 'mo' ? 0 : trimCount(spec.size, trimPercent);
 }
 
 /**
@@ -84,11 +161,11 @@ export function average(solves: Solve[], size: number): number {
  * competition simulator can ask "what would this average be?" about times that
  * haven't been solved yet without inventing Solve records to hold them.
  */
-export function trimmedAverage(values: number[]): number {
+export function trimmedAverage(values: number[], trimPercent = DEFAULT_TRIM_PERCENT): number {
   const size = values.length;
   if (size < 3) return NaN;
 
-  const trim = trimCount(size);
+  const trim = trimCount(size, trimPercent);
   const window = [...values].sort((a, b) => a - b);
   // The worst entry that still counts. Non-finite means a DNF outlived the
   // trim, and one surviving DNF is the whole average.
@@ -102,14 +179,19 @@ export function trimmedAverage(values: number[]): number {
 /**
  * How many times drop from each end of an average.
  *
- * One apiece up to ao19, which is the WCA rule and keeps ao5 and ao12 exactly
- * as they were, then 5% apiece — so an ao100 drops the best five and the worst
- * five, the convention every other timer uses. Trimming only one out of a
- * hundred would make a single unlucky DNF the whole figure, which over that
- * many solves is close to guaranteed.
+ * One apiece up to ao19, whatever the percentage says: that is the WCA rule,
+ * and it keeps ao5 and ao12 exactly as they were. From twenty on it is
+ * `trimPercent` apiece (5% unless the settings say otherwise), so an ao100
+ * drops the best five and the worst five, the convention every other timer
+ * uses. Trimming only one out of a hundred would make a single unlucky DNF the
+ * whole figure, which over that many solves is close to guaranteed.
+ *
+ * Never fewer than one: an average that trims nothing is a mean, and the list
+ * has `mo` for that.
  */
-export function trimCount(size: number): number {
-  return Math.max(1, Math.floor(size * 0.05));
+export function trimCount(size: number, trimPercent = DEFAULT_TRIM_PERCENT): number {
+  if (size < 20) return 1;
+  return Math.max(1, Math.floor((size * trimPercent) / 100));
 }
 
 /**
@@ -166,11 +248,16 @@ export function stdev(solves: Solve[]): number {
  * of five never looked at the sixth-most-recent solve, and slicing from zero
  * made this quadratic in a list the solve rail now redraws on every keystroke.
  */
-export function rollingAverages(solves: Solve[], size: number): number[] {
+export function rollingAverages(
+  solves: Solve[],
+  spec: AverageSpec | number,
+  trimPercent = DEFAULT_TRIM_PERCENT,
+): number[] {
+  const { kind, size } = specOf(spec);
   return solves.map((_, index) => (
     index + 1 < size
       ? NaN
-      : trimmedAverage(solves.slice(index + 1 - size, index + 1).map(effectiveMs))
+      : windowValue(solves.slice(index + 1 - size, index + 1).map(effectiveMs), kind, trimPercent)
   ));
 }
 
@@ -185,8 +272,12 @@ export function totalTime(solves: Solve[]): number {
 }
 
 /** The best rolling average of `size` anywhere in the session. */
-export function bestAverage(solves: Solve[], size: number): number {
-  return bestAverageWindow(solves, size).value;
+export function bestAverage(
+  solves: Solve[],
+  spec: AverageSpec | number,
+  trimPercent = DEFAULT_TRIM_PERCENT,
+): number {
+  return bestAverageWindow(solves, spec, trimPercent).value;
 }
 
 /**
@@ -199,9 +290,11 @@ export function bestAverage(solves: Solve[], size: number): number {
  */
 export function bestAverageWindow(
   solves: Solve[],
-  size: number,
+  spec: AverageSpec | number,
+  trimPercent = DEFAULT_TRIM_PERCENT,
 ): { value: number; start: number } {
-  if (solves.length < size) return { value: NaN, start: -1 };
+  const { kind, size } = specOf(spec);
+  if (size < 3 || solves.length < size) return { value: NaN, start: -1 };
 
   // Reduced to effective times once for the whole session rather than once per
   // window. Going through `average` sliced the solves, sliced the copy again,
@@ -212,7 +305,7 @@ export function bestAverageWindow(
   let lowest = Infinity;
   let at = 0;
   for (let start = 0; start + size <= times.length; start += 1) {
-    const value = trimmedAverage(times.slice(start, start + size));
+    const value = windowValue(times.slice(start, start + size), kind, trimPercent);
     if (value < lowest) {
       lowest = value;
       at = start;
@@ -273,6 +366,25 @@ export function dayCounts(solves: Solve[]): Map<string, number> {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * The solves grouped by the local day they were done on, newest day first, each
+ * day's solves still oldest first. The daily-stats table's whole data model;
+ * figures are worked out per row as rows are shown, so a five-year history
+ * only pays for the thirty days on screen.
+ */
+export function byDay(solves: Solve[]): { day: string; solves: Solve[] }[] {
+  const days = new Map<string, Solve[]>();
+  for (const solve of solves) {
+    const key = dayKey(solve.id);
+    const list = days.get(key);
+    if (list) list.push(solve);
+    else days.set(key, [solve]);
+  }
+  return [...days.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([day, list]) => ({ day, solves: list }));
 }
 
 /**

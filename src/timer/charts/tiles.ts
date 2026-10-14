@@ -15,8 +15,14 @@ export interface TileSpec {
 }
 
 /**
- * Both sets come to eight — the grid steps between 8, 4 and 2 columns and only
- * ever fills whole rows because of it. Keep them at eight.
+ * The fixed boxes either side of the averages. The averages themselves come
+ * from the settings' list and go where `averages` sits: every one of them for
+ * an event timed in one piece, only the shortest for a split event, which
+ * gives up the rest to memo and exec.
+ *
+ * With the stock list both sets come to eight. Other lengths are padded out
+ * to whole rows by the component, since the grid steps between 8, 4 and 2
+ * columns.
  */
 export const TILES: TileSpec[] = [
   { id: 'solves', name: 'solves' },
@@ -24,9 +30,7 @@ export const TILES: TileSpec[] = [
   { id: 'best', name: 'best single' },
   { id: 'mean', name: 'mean' },
   { id: 'deviation', name: 'deviation' },
-  { id: 'bestAo5', name: 'best ao5' },
-  { id: 'bestAo12', name: 'best ao12', only: 'unsplit' },
-  { id: 'bestAo100', name: 'best ao100', only: 'unsplit' },
+  { id: 'averages', name: 'averages' },
   { id: 'memo', name: 'memo', only: 'split' },
   { id: 'exec', name: 'exec', only: 'split' },
 ];

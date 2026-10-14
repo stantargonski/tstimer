@@ -1,11 +1,11 @@
 import { useMemo, useState, type PointerEvent } from 'react'
 import { formatTime } from '../format'
-import { rollingAverages } from '../stats'
+import { rollingAverages, specLabel, type AverageSpec } from '../stats'
 import { effectiveMs, type Solve } from '../types'
 import { extent, linePath, niceStep } from './scale'
 
 /**
- * Every solve in the session, with the ao5, ao12 and ao100 drawn over the top.
+ * Every solve in the session, with the settings' averages drawn over the top.
  *
  * Hand-rolled SVG rather than a charting library: the app has no runtime
  * dependencies beyond React, and what's needed here is a polyline and some
@@ -35,15 +35,17 @@ function xStep(count: number): number {
 interface TimeChartProps {
   solves: Solve[]
   decimals: 2 | 3
+  averages: AverageSpec[]
+  trimPercent: number
 }
 
-export default function TimeChart({ solves, decimals }: TimeChartProps) {
-  // Each series costs a pass per solve over its own window, so the ao100 line
+export default function TimeChart({ solves, decimals, averages, trimPercent }: TimeChartProps) {
+  // Each series costs a pass per solve over its own window, so an ao100 line
   // alone is twenty times the ao5 line. Memoised on the solves rather than
   // recomputed whenever the span buttons or the theme move underneath it.
-  const [ao5, ao12, ao100] = useMemo(
-    () => [5, 12, 100].map((size) => rollingAverages(solves, size)),
-    [solves],
+  const series = useMemo(
+    () => averages.map((spec) => rollingAverages(solves, spec, trimPercent)),
+    [solves, averages, trimPercent],
   )
 
   /** Which solve the pointer is nearest, or null when it is off the chart. */
@@ -144,10 +146,6 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
     index: hover,
     time: times[hover],
     when: new Date(solves[hover].id),
-    // Already computed for the lines; the readout is only reading them off.
-    ao5: ao5[hover],
-    ao12: ao12[hover],
-    ao100: ao100[hover],
   }
 
   return (
@@ -172,9 +170,10 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
           />
         )}
 
-        <path className="line ao100" d={linePath(ao100, x, y)} fill="none" />
-        <path className="line ao12" d={linePath(ao12, x, y)} fill="none" />
-        <path className="line ao5" d={linePath(ao5, x, y)} fill="none" />
+        {/* Longest first, so the shortest — the one you read values off — is on top. */}
+        {series.map((line, at) => (
+          <path key={specLabel(averages[at])} className={`line s${at}`} d={linePath(line, x, y)} fill="none" />
+        )).reverse()}
 
         {points}
 
@@ -227,9 +226,12 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
           </b>
           <i>{at.when.toLocaleDateString()} {at.when.toLocaleTimeString()}</i>
           <dl>
-            <dt>ao5</dt><dd>{formatTime(at.ao5, decimals)}</dd>
-            <dt>ao12</dt><dd>{formatTime(at.ao12, decimals)}</dd>
-            <dt>ao100</dt><dd>{formatTime(at.ao100, decimals)}</dd>
+            {/* Already computed for the lines; the readout is only reading them off. */}
+            {averages.map((spec, index) => (
+              <div key={specLabel(spec)} className="chart-tip-row">
+                <dt>{specLabel(spec)}</dt><dd>{formatTime(series[index][at.index], decimals)}</dd>
+              </div>
+            ))}
           </dl>
         </div>
       )}

@@ -1,9 +1,12 @@
 import {
-  cleanName, cleanScramble, describeBytes, isSaneDate, isSaneMs,
+  cleanComment, cleanName, cleanScramble, describeBytes, isSaneDate, isSaneMs,
   MAX_FILE_BYTES, STORE_BUDGET,
 } from '../data/limits';
 import { DEFAULT_EVENT, eventOf, type EventId } from './events';
-import { emptyTimerStore, type Penalty, type Session, type Solve, type TimerStore } from './types';
+import { MBLD_MAX, MBLD_MIN } from './settings';
+import {
+  emptyTimerStore, type MbldResult, type Penalty, type Session, type Solve, type TimerStore,
+} from './types';
 
 /**
  * Reading a csTimer export.
@@ -35,6 +38,8 @@ export interface RawSolve {
   at: number;
   /** Multi-phase split points, cumulative from the start of the solve. */
   phases: number[];
+  /** csTimer's comment slot, cleaned; absent when it was empty. */
+  comment?: string;
 }
 
 export interface ImportedSession {
@@ -180,7 +185,7 @@ interface ReadSolve {
 function readSolve(entry: unknown): ReadSolve | null {
   if (!Array.isArray(entry)) return null;
 
-  const [time, scramble, , date] = entry as unknown[];
+  const [time, scramble, comment, date] = entry as unknown[];
   const parts = Array.isArray(time)
     // Sliced before filtering: the length of this array is the file's choice.
     ? time.slice(0, 2 + MAX_PHASES).filter((part): part is number => typeof part === 'number')
@@ -206,6 +211,7 @@ function readSolve(entry: unknown): ReadSolve | null {
   const at = typeof date === 'number' ? Math.round(date * 1000) : 0;
   const raw = typeof scramble === 'string' ? scramble : '';
   const kept = cleanScramble(raw);
+  const note = cleanComment(comment);
 
   return {
     solve: {
@@ -214,6 +220,7 @@ function readSolve(entry: unknown): ReadSolve | null {
       scramble: kept,
       at: isSaneDate(at) ? at : 0,
       phases: parts.slice(2).filter(isSaneMs),
+      ...(note ? { comment: note } : {}),
     },
     trimmed: kept.length < raw.length,
   };
@@ -399,16 +406,38 @@ function toSolves(raws: RawSolve[], event: EventId, base: number): Solve[] {
     // csTimer session ever recorded one. The first split is where memo ended.
     const memo = split ? raw.phases.find((phase) => phase > 0 && phase < raw.ms) : undefined;
 
-    out.push({
+    const solve: Solve = {
       id,
       ms: raw.ms,
       memoMs: memo ?? null,
       penalty: raw.penalty,
       scramble: raw.scramble,
       event,
-    });
+    };
+    // A multi-blind result has no slot in csTimer, so the export writes it at
+    // the head of the comment. Read back only for multi-blind: on any other
+    // event "mbld 8/10" is just something someone typed.
+    const read = eventOf(event).scramble.kind === 'mbf' ? readMbldComment(raw.comment) : null;
+    if (read?.mbld) solve.mbld = read.mbld;
+    const comment = read ? read.rest : raw.comment;
+    if (comment) solve.comment = comment;
+    out.push(solve);
   }
   return out;
+}
+
+/** The comment prefix a multi-blind result travels to csTimer in. */
+const MBLD_COMMENT = /^mbld (\d{1,2})\/(\d{1,2})(?:; ?)?/;
+
+/** `mbld 8/10; rest` as the result and what's left of the comment. */
+function readMbldComment(comment: string | undefined): { mbld?: MbldResult; rest?: string } {
+  const match = comment ? MBLD_COMMENT.exec(comment) : null;
+  if (!comment || !match) return { rest: comment };
+  const solved = Number(match[1]);
+  const attempted = Number(match[2]);
+  if (attempted < MBLD_MIN || attempted > MBLD_MAX || solved > attempted) return { rest: comment };
+  const rest = comment.slice(match[0].length).trim();
+  return { mbld: { solved, attempted }, ...(rest ? { rest } : {}) };
 }
 
 /** What one row did, once the import has run. */
@@ -587,4 +616,78 @@ export function undoImport(store: TimerStore, results: ImportResult[]): TimerSto
     ? store.activeId
     : sessions[0].id;
   return { ...store, sessions, activeId };
+}
+
+/**
+ * csTimer's scramble type for each event, the way its own picker names them.
+ *
+ * Every entry reads back through `eventFromScramble` as the same event, which
+ * `check-cstimer` pins. The relays have no csTimer equivalent and go out as
+ * 3x3, which is also where an import of an unknown type lands.
+ */
+const SCR_TYPES: Partial<Record<EventId, string>> = {
+  '222': '222so',
+  '333': '333',
+  '444': '444wca',
+  '555': '555wca',
+  '666': '666wca',
+  '777': '777wca',
+  '333bf': '333ni',
+  '333oh': '333oh',
+  '333fm': '333fm',
+  'clock': 'clkwca',
+  'minx': 'mgmp',
+  'pyram': 'pyrso',
+  'skewb': 'skbso',
+  'sq1': 'sqrs',
+  '444bf': '444bld',
+  '555bf': '555bld',
+  '333mbf': 'r3ni',
+};
+
+export function scrTypeOf(event: EventId): string {
+  return SCR_TYPES[event] ?? '333';
+}
+
+/** One solve the way csTimer writes it: `[[penalty, raw ms, ...phases], scramble, comment, seconds]`. */
+function toCsTimerSolve(solve: Solve): [number[], string, string, number] {
+  const flag = solve.penalty === 'dnf' ? -1 : solve.penalty === 'plus2' ? 2000 : 0;
+  // The raw time with the penalty beside it — csTimer adds the two seconds on
+  // show, exactly as this app does. A memo split is the one phase boundary.
+  const time = solve.memoMs === null ? [flag, solve.ms] : [flag, solve.ms, solve.memoMs];
+
+  const result = solve.mbld ? `mbld ${solve.mbld.solved}/${solve.mbld.attempted}` : '';
+  const comment = [result, solve.comment ?? ''].filter(Boolean).join('; ');
+
+  return [time, solve.scramble, comment, Math.round(solve.id / 1000)];
+}
+
+/**
+ * The whole store as a csTimer export — the file `parseCsTimer` reads, and the
+ * one csTimer's own Import from file takes.
+ *
+ * Sessions are numbered in the store's order. `sessionData` is a string of JSON
+ * inside the JSON, because that is how csTimer writes it.
+ */
+export function exportCsTimer(store: TimerStore): string {
+  const out: Record<string, unknown> = {};
+  const sessionData: Record<string, unknown> = {};
+
+  store.sessions.forEach((session, index) => {
+    const number = index + 1;
+    out[`session${number}`] = session.solves.map(toCsTimerSolve);
+    sessionData[number] = {
+      name: session.name,
+      opt: { scrType: scrTypeOf(session.event) },
+      rank: number,
+    };
+  });
+
+  const active = store.sessions.findIndex((session) => session.id === store.activeId);
+  out.properties = {
+    sessionData: JSON.stringify(sessionData),
+    sessionN: store.sessions.length,
+    session: active + 1 || 1,
+  };
+  return JSON.stringify(out);
 }

@@ -1,6 +1,10 @@
 import type { CSSProperties } from 'react'
 import { formatTime } from '../timer/format'
 import { DEFAULT_TIMER_SETTINGS, type TimerSettings } from '../timer/settings'
+import { specLabel } from '../timer/stats'
+
+/** Made-up figures for the mock, longer windows a little slower as they would be. */
+const MOCK = ['12.88', '13.20', '13.64', '13.81', '13.95', '14.02']
 
 /**
  * What the timer will look like, shown next to the switches that change it.
@@ -38,9 +42,9 @@ export default function TimerPreview({ settings }: { settings: TimerSettings }) 
                 <div className="rail-stats">
                   <table className="stats">
                     <tbody>
-                      <tr><th scope="row">ao5</th><td>12.88</td></tr>
-                      <tr><th scope="row">ao12</th><td>13.20</td></tr>
-                      <tr><th scope="row">ao100</th><td>13.64</td></tr>
+                      {settings.averages.map((spec, at) => (
+                        <tr key={specLabel(spec)}><th scope="row">{specLabel(spec)}</th><td>{MOCK[at]}</td></tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -102,8 +106,9 @@ export default function TimerPreview({ settings }: { settings: TimerSettings }) 
                 </div>
                 {settings.showAverages && (
                   <div className="averages">
-                    <span>ao5 <b>12.88</b></span>
-                    <span>ao12 <b>13.20</b></span>
+                    {settings.averages.slice(0, 2).map((spec, at) => (
+                      <span key={specLabel(spec)}>{specLabel(spec)} <b>{MOCK[at]}</b></span>
+                    ))}
                   </div>
                 )}
               </div>

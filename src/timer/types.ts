@@ -23,6 +23,12 @@ export interface Solve {
    * a newer store simply ignores this.
    */
   mbld?: MbldResult;
+  /**
+   * A note on the solve, cleaned like a session name and at most
+   * `MAX_COMMENT` characters. Absent rather than empty, and optional for the
+   * same reason as `mbld`: older stores load without it.
+   */
+  comment?: string;
 }
 
 /** Cubes solved out of cubes attempted, for a multi-blind attempt. */

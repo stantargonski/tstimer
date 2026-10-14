@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTimer } from './useTimer'
 import { useHotkeys } from '../keys/useHotkeys'
 import { keyHint, withHint, type Keymap } from '../keys/keymap'
-import { popDeleted, pushDeleted } from './undo'
+import { popUndo, pushUndo } from './undo'
+import { splitSession, undoSessionOp } from './sessionOps'
+import { cleanComment } from '../data/limits'
 import LiveClock from './LiveClock'
 import { digitsFace, formatTime, maxEntryDigits, parseDigits } from './format'
 import { DEFAULT_RELAY, eventOf, type EventId, type WcaEvent } from './events'
@@ -33,7 +35,7 @@ import {
   RAIL_SPLIT_MIN, SCRAMBLE_FLOAT_MAX_WIDTH, SCRAMBLE_FLOAT_MIN_HEIGHT, SCRAMBLE_FLOAT_MIN_WIDTH,
   SCRAMBLE_FLOAT_WIDTH, STATS_FLOAT, type PanelId, type TimerSettings,
 } from './settings'
-import { average, meanExec, meanMemo } from './stats'
+import { average, meanExec, meanMemo, specLabel, trimFor } from './stats'
 import { formatOf, resultOf, suggestTarget } from './comp'
 import { downloadText, sessionCsv, slug, stamp } from '../data/backup'
 import {
@@ -289,11 +291,38 @@ export default function TimerPanel({
   function deleteSolve(id: number) {
     const index = solves.findIndex((solve) => solve.id === id)
     if (index === -1) return
-    pushDeleted({ sessionId: session.id, index, solve: solves[index] })
+    pushUndo({ kind: 'solve', sessionId: session.id, index, solve: solves[index] })
     updateActive((item) => ({
       ...item,
       solves: item.solves.filter((solve) => solve.id !== id),
     }))
+  }
+
+  /** A solve's comment, cleaned; an empty one removes the key. */
+  function setComment(id: number, text: string) {
+    const comment = cleanComment(text)
+    updateActive((item) => ({
+      ...item,
+      solves: item.solves.map((solve) => {
+        if (solve.id !== id) return solve
+        const next = { ...solve, comment }
+        // No key at all rather than an undefined one, as everywhere else.
+        if (!comment) delete next.comment
+        return next
+      }),
+    }))
+  }
+
+  /** This solve and every one after it into a new session, undoable. */
+  function splitHere(id: number) {
+    const done = splitSession(store, session.id, id)
+    if (!done) return
+    setStore(done.store)
+    pushUndo(done.undo)
+    // The new session sits straight after this one.
+    const created = done.store.sessions[done.store.sessions.findIndex((item) => item.id === session.id) + 1]
+    const undo = keyHint(keymap, 'undoDelete')
+    say(`split off ${created.name}${undo ? ` — ${undo} to undo` : ''}`)
   }
 
   function setEvent(id: EventId) {
@@ -454,8 +483,17 @@ export default function TimerPanel({
   /** Puts the last deleted solve back where it was, in whichever session it
       came from. */
   function undoDelete() {
-    const last = popDeleted()
+    const last = popUndo()
     if (!last) { say('nothing to undo'); return }
+
+    // A merge or a split, from here or from the settings page.
+    if (last.kind !== 'solve') {
+      const undone = undoSessionOp(store, last)
+      if (!undone) { say('nothing left to undo that into'); return }
+      setStore(undone.store)
+      say(undone.message)
+      return
+    }
 
     const home = store.sessions.find((item) => item.id === last.sessionId)
     if (!home) { say('that solve’s session is gone'); return }
@@ -968,6 +1006,8 @@ export default function TimerPanel({
                 solves={solves}
                 decimals={settings.decimals}
                 event={event}
+                averages={settings.averages}
+                trimPercent={settings.trimPercent}
                 sessionId={session.id}
                 onOpenAverage={setDetail}
               />
@@ -1015,8 +1055,12 @@ export default function TimerPanel({
                 solves={solves}
                 sessionId={session.id}
                 decimals={settings.decimals}
+                averages={settings.averages}
+                trimPercent={settings.trimPercent}
                 onPenalty={setPenalty}
                 onDelete={deleteSolve}
+                onComment={setComment}
+                onSplit={splitHere}
                 onOpenAverage={setDetail}
               />
             </div>
@@ -1060,6 +1104,8 @@ export default function TimerPanel({
               solves={solves}
               decimals={settings.decimals}
               event={event}
+              averages={settings.averages}
+              trimPercent={settings.trimPercent}
               sessionId={session.id}
               onOpenAverage={setDetail}
             />
@@ -1174,11 +1220,15 @@ export default function TimerPanel({
                   distraction. */}
               {settings.showAverages && !timing && (
                 <div className="averages">
-                  {[5, 12].map((size) => {
-                    const value = average(solves, size)
+                  {/* The first two of the list, shortest first: ao5 and ao12
+                      unless the settings say otherwise. */}
+                  {settings.averages.slice(0, 2).map((spec) => {
+                    const { size } = spec
+                    const value = average(solves, spec, settings.trimPercent)
+                    const label = specLabel(spec)
                     return (
-                      <span key={size}>
-                        ao{size}{' '}
+                      <span key={label}>
+                        {label}{' '}
                         <b>
                           <button
                             type="button"
@@ -1187,7 +1237,10 @@ export default function TimerPanel({
                             // the average to exist.
                             disabled={Number.isNaN(value)}
                             onClick={() => setDetail({
-                              label: `ao${size}`, solves: solves.slice(-size),
+                              label,
+                              solves: solves.slice(-size),
+                              value,
+                              trim: trimFor(spec, settings.trimPercent),
                             })}
                           >
                             {formatTime(value, settings.decimals)}
@@ -1240,6 +1293,8 @@ export default function TimerPanel({
           <SessionGraph
             solves={solves}
             decimals={settings.decimals}
+            averages={settings.averages}
+            trimPercent={settings.trimPercent}
             span={settings.graphSpan}
             width={graphBox.width}
             height={graphBox.height}
@@ -1319,6 +1374,8 @@ export default function TimerPanel({
               solves={solves}
               decimals={settings.decimals}
               event={event}
+              averages={settings.averages}
+              trimPercent={settings.trimPercent}
               sessionId={session.id}
               onOpenAverage={setDetail}
             />
@@ -1345,8 +1402,12 @@ export default function TimerPanel({
               solves={solves}
               sessionId={session.id}
               decimals={settings.decimals}
+              averages={settings.averages}
+              trimPercent={settings.trimPercent}
               onPenalty={setPenalty}
               onDelete={deleteSolve}
+              onComment={setComment}
+              onSplit={splitHere}
               onOpenAverage={setDetail}
               compact
             />
@@ -1368,6 +1429,7 @@ export default function TimerPanel({
           label={detail.label}
           solves={detail.solves}
           value={detail.value}
+          trim={detail.trim}
           decimals={settings.decimals}
           onClose={() => setDetail(null)}
         />
