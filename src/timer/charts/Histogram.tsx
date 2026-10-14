@@ -1,5 +1,6 @@
 import { formatTime } from '../format'
 import { effectiveMs, type Solve } from '../types'
+import { extent } from './scale'
 
 /**
  * Where the times actually land.
@@ -48,8 +49,7 @@ export default function Histogram({ solves, decimals }: HistogramProps) {
     return <p className="chart-empty">A few more solves and the shape shows up.</p>
   }
 
-  const low = Math.min(...times)
-  const high = Math.max(...times)
+  const { low, high } = extent(times) ?? { low: 0, high: 0 }
   const width = binWidth(high - low || 1000)
 
   // Snap the first edge down to a multiple of the width, so the boundaries are
@@ -62,7 +62,7 @@ export default function Histogram({ solves, decimals }: HistogramProps) {
     counts[Math.min(bins - 1, Math.floor((time - first) / width))] += 1
   }
 
-  const tallest = Math.max(...counts)
+  const tallest = extent(counts)?.high ?? 0
   const plotWidth = WIDTH - PAD.left - PAD.right
   const plotHeight = HEIGHT - PAD.top - PAD.bottom
   const barWidth = plotWidth / bins

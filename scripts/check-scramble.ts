@@ -13,6 +13,7 @@ import { scrambleFor, scrambleText } from '../src/timer/scramble';
 import { warmUp, isReady, randomStateScramble } from '../src/timer/scramble/twoByTwo';
 import { randomOrientation } from '../src/timer/scramble/nxn';
 import { solvedCube, stateAfter } from '../src/cube/nxn';
+import { scrambleSquare1 } from '../src/timer/scramble/other';
 
 const failures: string[] = [];
 
@@ -185,7 +186,41 @@ function checkEventTable(): void {
   check(eventOf('nonsense').id === '333', 'an unknown event id should fall back to 3x3');
 }
 
+/**
+ * Every Square-1 slash has to be one a real puzzle can make.
+ *
+ * Replayed on a piece model of its own rather than the generator's cell flags:
+ * each layer is twelve 30° cells holding a piece id, a corner filling two, and a
+ * slash is legal only when no piece sits across either end of the cut.
+ */
+function checkSquare1(): void {
+  const piece = (ids: string) => ids.split(' ');
+  for (let trial = 0; trial < 2000; trial += 1) {
+    let top = piece('c0 c0 e1 c2 c2 e3 c4 c4 e5 c6 c6 e7');
+    let bottom = piece('e8 c9 c9 e10 c11 c11 e12 c13 c13 e14 c15 c15');
+    const turn = (layer: string[], by: number) => layer.map((_, i) => layer[(((i - by) % 12) + 12) % 12]);
+    const cut = (layer: string[]) => layer[11] !== layer[0] && layer[5] !== layer[6];
+    const scramble = scrambleSquare1().join(' ');
+
+    for (const match of scramble.matchAll(/\((-?\d+),(-?\d+)\)(\/?)/g)) {
+      const [, a, b, slash] = match;
+      check(!(a === '0' && b === '0'), `square-1: a (0,0) twist in ${scramble}`);
+      top = turn(top, Number(a));
+      bottom = turn(bottom, Number(b));
+      if (!slash) continue;
+      if (!cut(top) || !cut(bottom)) {
+        check(false, `square-1: an impossible slash after (${a},${b}) in ${scramble}`);
+        break;
+      }
+      const flipped = top.slice(6);
+      top = [...top.slice(0, 6), ...bottom.slice(0, 6)];
+      bottom = [...flipped, ...bottom.slice(6)];
+    }
+  }
+}
+
 checkEventTable();
+checkSquare1();
 checkEveryEvent();
 checkNotSolved();
 checkOrientations();

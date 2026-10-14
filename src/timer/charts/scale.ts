@@ -34,3 +34,21 @@ export function linePath(
   });
   return out.trim();
 }
+
+/**
+ * The lowest and highest finite values, or null when there are none.
+ *
+ * A loop rather than `Math.min(...values)`: spreading an array into arguments
+ * overflows the stack somewhere past a hundred thousand values, which an
+ * all-time view of a big csTimer import can reach.
+ */
+export function extent(values: Iterable<number>): { low: number; high: number } | null {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  return low <= high ? { low, high } : null;
+}

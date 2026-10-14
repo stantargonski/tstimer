@@ -125,6 +125,7 @@ export default function FloatingBox({
           onPointerMove={panel.onPointerMove}
           onPointerUp={panel.onPointerUp}
           onPointerCancel={panel.onPointerUp}
+          onLostPointerCapture={panel.onLostPointerCapture}
         />
       )}
 
@@ -138,6 +139,7 @@ export default function FloatingBox({
           onPointerMove={panel.onPointerMove}
           onPointerUp={panel.onPointerUp}
           onPointerCancel={panel.onPointerUp}
+          onLostPointerCapture={panel.onLostPointerCapture}
         >
           {title}
           <LockButton locked={locked} name={title} onToggle={onLock} />

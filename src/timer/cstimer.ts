@@ -15,7 +15,7 @@ import { emptyTimerStore, type Penalty, type Session, type Solve, type TimerStor
  *
  * A solve is `[[penalty, total, ...phases], scramble, comment, seconds]`:
  *   penalty  0 normal, 2000 a +2, -1 a DNF
- *   total    what a judge would read — a +2 already has its two seconds in it
+ *   total    the raw time; csTimer adds a +2's two seconds only when it shows it
  *   phases   multi-phase split points, cumulative from the start of the solve
  *   seconds  unix seconds, not milliseconds
  *
@@ -194,11 +194,11 @@ function readSolve(entry: unknown): ReadSolve | null {
   // it here keeps every downstream average, axis and formatter honest.
   if (!isSaneMs(total) || total <= 0) return null;
 
-  // The penalty lives beside the raw time here rather than baked into it, so
-  // the two seconds csTimer added come back out and toggling the +2 off
-  // restores the original reading.
+  // csTimer keeps the penalty beside the raw time, exactly as this app does —
+  // its own session mean is the sum of raw + penalty — so the time comes across
+  // untouched and the +2 is only a flag.
   const penalty: Penalty = flag === -1 ? 'dnf' : flag === 2000 ? 'plus2' : 'none';
-  const ms = penalty === 'plus2' ? Math.max(0, total - 2000) : total;
+  const ms = total;
 
   // A date is also an id and a point on an axis, so an impossible one is
   // dropped rather than carried: the solve keeps its place in the order and
@@ -217,6 +217,24 @@ function readSolve(entry: unknown): ReadSolve | null {
     },
     trimmed: kept.length < raw.length,
   };
+}
+
+/**
+ * Each solve's date, with an undated solve given the date of the solve before
+ * it in the file (or after it, at the very start).
+ *
+ * Sorting by the bare date put every undated solve first, and the id it got
+ * there — today — pushed every dated solve after it to today as well. A
+ * neighbour's date keeps it where csTimer had it; the id nudge in `toSolves`
+ * keeps the two apart. All zeros means the session has no dates at all.
+ */
+function placedDates(solves: RawSolve[]): number[] {
+  const first = solves.find((solve) => solve.at > 0)?.at ?? 0;
+  let previous = first;
+  return solves.map((solve) => {
+    if (solve.at > 0) previous = solve.at;
+    return previous;
+  });
 }
 
 /**
@@ -286,7 +304,9 @@ export function parseCsTimer(text: string): CsTimerFile {
 
     const info = meta.get(match[1]);
     const scrType = typeof info?.scrType === 'string' ? info.scrType.slice(0, 32) : '';
-    solves.sort((a, b) => a.at - b.at);
+    const dates = placedDates(solves);
+    const order = solves.map((_, index) => index).sort((a, b) => dates[a] - dates[b]);
+    solves.splice(0, solves.length, ...order.map((index) => solves[index]));
     sessions.push({
       key,
       name: sessionName(info, match[1]),
@@ -367,10 +387,11 @@ export function countSolves(rows: ImportRow[]): number {
 function toSolves(raws: RawSolve[], event: EventId, base: number): Solve[] {
   const split = eventOf(event).split;
   const out: Solve[] = [];
+  const dates = placedDates(raws);
   let last = 0;
 
-  for (const raw of raws) {
-    let id = raw.at > 0 ? raw.at : base + out.length;
+  for (const [index, raw] of raws.entries()) {
+    let id = dates[index] > 0 ? dates[index] : base + out.length;
     if (id <= last) id = last + 1;
     last = id;
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Scramble } from './scramble'
 import { scrambleText } from './scramble'
 import { SCALE_MAX, SCALE_MIN, type ScrambleClick } from './settings'
@@ -42,6 +42,12 @@ export default function ScrambleBanner({
   const textRef = useRef<HTMLButtonElement>(null)
   /** The size and height the drag started from. */
   const from = useRef({ scale, height: 1 })
+  /**
+   * The size while the edge is held, drawn here and saved once on release.
+   * Saved on every move, each one re-rendered the whole timer and wrote the
+   * settings to storage — the drag ran at a handful of frames a second.
+   */
+  const [held, setHeld] = useState<number | null>(null)
 
   // The scramble's height grows with its text size, so the edge follows the
   // pointer when the size moves by the share of that height it was dragged.
@@ -50,7 +56,12 @@ export default function ScrambleBanner({
     const next = Math.round(Math.min(
       SCALE_MAX, Math.max(SCALE_MIN, start.scale * (start.height + delta) / start.height),
     ))
-    if (next !== scale) onScale?.(next)
+    setHeld(next)
+  }
+
+  function release() {
+    if (held !== null && held !== scale) onScale?.(held)
+    setHeld(null)
   }
 
   useEffect(() => {
@@ -78,7 +89,10 @@ export default function ScrambleBanner({
   }
 
   return (
-    <div className={flat ? 'scramble-bar flat' : 'scramble-bar'}>
+    <div
+      className={flat ? 'scramble-bar flat' : 'scramble-bar'}
+      style={held === null ? undefined : { '--scramble-scale': held / 100 } as CSSProperties}
+    >
       {/* The nav sits with the picker rather than beside the scramble: both
           decide what you are about to solve, and neither is the scramble. */}
       {showHead && (
@@ -132,6 +146,7 @@ export default function ScrambleBanner({
             from.current = { scale, height: Math.max(1, textRef.current?.offsetHeight ?? 1) }
           }}
           onDrag={drag}
+          onEnd={release}
         />
       )}
     </div>

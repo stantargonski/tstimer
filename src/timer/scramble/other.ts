@@ -6,8 +6,7 @@ import { between, pick } from './random';
  * Each of these is random-move rather than random-state: the WCA generates
  * Pyraminx, Skewb and Square-1 scrambles from a solver, and these will
  * occasionally be easier than a competition scramble would be. The notation is
- * the official notation in every case, so a scramble here pastes cleanly into
- * any other timer or solver.
+ * the official notation in every case.
  */
 
 /** Signed turn amounts, written the way each puzzle writes them. */
@@ -105,18 +104,63 @@ function randomFaces(faces: readonly string[], length: number): string[] {
  * Square-1, in slash notation.
  *
  * `(a,b)` turns the top layer a twelfths and the bottom b twelfths; the slash
- * flips half the puzzle over. A scramble is a run of those, and it must not end
- * on a slash — a trailing flip is a move you would immediately undo.
+ * flips half the puzzle over. A slash is only possible when neither layer has a
+ * corner across the cut, so the layers are tracked as the scramble is built and
+ * a twist is drawn again until it leaves both cut-aligned. Picking twists blind
+ * produced scrambles with an impossible slash in almost every one.
+ *
+ * Each layer is twelve 30° cells, clockwise; a 1 marks the first cell of a
+ * corner, which runs on into the next. The model is csTimer's, so the twists
+ * read the same way round as everyone else's.
  */
+const SQ1_SOLVED = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0];
+
+/** Whether turning top by `top` and bottom by `bottom` leaves a slash possible. */
+export function sq1CanSlashAfter(cells: readonly number[], top: number, bottom: number): boolean {
+  const at = (layer: number, turn: number, index: number) =>
+    cells[layer * 12 + (((index - turn) % 12) + 12) % 12];
+  // A corner starting in cell 5 or 11 would sit across the cut.
+  return !at(0, top, 5) && !at(0, top, 11) && !at(1, bottom, 5) && !at(1, bottom, 11);
+}
+
+/** The layers after a twist. */
+export function sq1Twist(cells: readonly number[], top: number, bottom: number): number[] {
+  return cells.map((_, i) => {
+    const layer = i < 12 ? 0 : 1;
+    const turn = layer === 0 ? top : bottom;
+    return cells[layer * 12 + (((i % 12) - turn) % 12 + 12) % 12];
+  });
+}
+
+/** The layers after a slash: the right half of each layer swaps over. */
+export function sq1Slash(cells: readonly number[]): number[] {
+  const next = [...cells];
+  for (let i = 0; i < 6; i += 1) {
+    next[i + 6] = cells[i + 12];
+    next[i + 12] = cells[i + 6];
+  }
+  return next;
+}
+
 export function scrambleSquare1(): string[] {
   const twists = between(11, 13);
   const moves: string[] = [];
+  let cells = [...SQ1_SOLVED];
 
   for (let i = 0; i < twists; i += 1) {
-    const top = between(-5, 6);
-    const bottom = between(-6, 5);
+    let top: number;
+    let bottom: number;
+    // (0,0) would put two slashes back to back, which undo each other.
+    do {
+      top = between(-5, 6);
+      bottom = between(-5, 6);
+    } while ((top === 0 && bottom === 0) || !sq1CanSlashAfter(cells, top, bottom));
+
+    cells = sq1Twist(cells, top, bottom);
+    const last = i === twists - 1;
+    if (!last) cells = sq1Slash(cells);
     // The slash rides on the twist before it, the way the notation is written.
-    moves.push(`(${top},${bottom})${i < twists - 1 ? '/' : ''}`);
+    moves.push(`(${top},${bottom})${last ? '' : '/'}`);
   }
   return moves;
 }

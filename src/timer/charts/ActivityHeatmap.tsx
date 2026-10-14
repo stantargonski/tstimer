@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { dayCounts, dayKey } from '../stats'
 import type { Solve } from '../types'
 import { DAY, startOfDay, windowBounds, type TimeWindow } from './filters'
+import { extent } from './scale'
 
 /**
  * When you actually practised, a square per day.
@@ -72,7 +73,7 @@ export default function ActivityHeatmap({ solves, range, now }: ActivityHeatmapP
     // All-time starts at the first solve, but never draws less than a month —
     // a single column of squares reads as a bug rather than as a new account.
     const earliest = solves.length > 0
-      ? startOfDay(Math.min(...solves.map((solve) => solve.id)))
+      ? startOfDay(extent(solves.map((solve) => solve.id))?.low ?? now)
       : today;
 
     const from = bounds.from === null

@@ -6,7 +6,7 @@
  *
  * An import is the one operation a user cannot check by eye: nobody re-reads a
  * thousand solves to confirm the +2s came across. So the awkward parts are
- * pinned here — csTimer bakes the two seconds into a +2 and this app doesn't,
+ * pinned here — csTimer keeps a +2's raw time and adds the two seconds on show,
  * its dates are seconds where a solve id is milliseconds, two solves in the
  * same second would otherwise collide, and a memo split only means something
  * for a blindfolded event.
@@ -113,12 +113,12 @@ check(plain.ms === 12_340, 'a clean time comes across as it was');
 check(plain.scramble === "R U R' U'", 'the scramble comes with it');
 check(plain.event === '333', "the solve is filed under the row's event");
 
-// csTimer stores what a judge would read; here the penalty sits beside the raw
-// time, so the two seconds have to come back out or every +2 gains two seconds
-// on every reload.
+// csTimer stores the raw time with the penalty beside it, as this app does —
+// its own session mean is raw + penalty. Taking two seconds off on the way in
+// made every imported +2 two seconds faster than csTimer showed it.
 check(plus2.penalty === 'plus2', 'a 2000 flag is a +2');
-check(plus2.ms === 12_500, `a +2 keeps its raw time (got ${plus2.ms})`);
-check(effectiveMs(plus2) === 14_500, 'and still reads as csTimer had it');
+check(plus2.ms === 14_500, `a +2 keeps its raw time (got ${plus2.ms})`);
+check(effectiveMs(plus2) === 16_500, 'and reads as csTimer showed it, two seconds on');
 
 check(dnf.penalty === 'dnf', 'a -1 flag is a DNF');
 check(dnf.ms === 20_000, 'a DNF keeps the time under it');
@@ -358,6 +358,27 @@ try {
   check(
     kept !== undefined && kept.solves.length === 2 && kept.solves.some((solve) => solve.id === later.id),
     'a solve timed since the import survives its undo',
+  );
+}
+
+// One undated solve among dated ones. Sorted to the front it took today's date
+// as its id, and every dated solve after it was nudged to today too.
+{
+  const undated = parseCsTimer(JSON.stringify({
+    session1: [
+      [[0, 10_000], 'R', '', SECOND],
+      [[0, 11_000], 'U', ''],
+      [[0, 12_000], 'F', '', SECOND + 60],
+    ],
+  }));
+  const store = emptyTimerStore();
+  const rows: ImportRow[] = undated.sessions.map((source) => ({
+    source, include: true, destination: NEW_SESSION, event: source.event, name: source.name,
+  }));
+  const ids = applyImport(store, rows).store.sessions[store.sessions.length].solves.map((solve) => solve.id);
+  check(
+    ids.length === 3 && ids[0] === SECOND * 1000 && ids[1] === SECOND * 1000 + 1 && ids[2] === (SECOND + 60) * 1000,
+    `an undated solve takes its neighbour's date and leaves the rest alone (got ${ids.join(', ')})`,
   );
 }
 

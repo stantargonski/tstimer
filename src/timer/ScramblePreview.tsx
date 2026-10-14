@@ -92,6 +92,7 @@ export default function ScramblePreview({
           onPointerMove={panel.onPointerMove}
           onPointerUp={panel.onPointerUp}
           onPointerCancel={panel.onPointerUp}
+          onLostPointerCapture={panel.onLostPointerCapture}
         />
       )}
 
@@ -104,6 +105,7 @@ export default function ScramblePreview({
         onPointerMove={panel.onPointerMove}
         onPointerUp={panel.onPointerUp}
         onPointerCancel={panel.onPointerUp}
+        onLostPointerCapture={panel.onLostPointerCapture}
       >
         {event.short} scramble
 

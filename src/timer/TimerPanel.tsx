@@ -3,7 +3,7 @@ import { useTimer } from './useTimer'
 import { useHotkeys } from '../keys/useHotkeys'
 import { keyHint, withHint, type Keymap } from '../keys/keymap'
 import { popDeleted, pushDeleted } from './undo'
-import { clockPhase, clockText, isInspecting } from './display'
+import LiveClock from './LiveClock'
 import { digitsFace, formatTime, maxEntryDigits, parseDigits } from './format'
 import { eventOf, type EventId, type WcaEvent } from './events'
 import { prepare, scrambleFor, scrambleText, type Scramble } from './scramble'
@@ -372,7 +372,7 @@ export default function TimerPanel({
 
   const typedEntry = settings.entryMode === 'typed'
 
-  const { phase, ms, inspectMs } = useTimer(
+  const { phase, since, inspecting } = useTimer(
     (finished, memo, penalty) => {
       // Multi-blind is the one event the clock can't finish on its own: how many
       // cubes came out solved decides both the score and whether the attempt
@@ -389,7 +389,9 @@ export default function TimerPanel({
       inspection: settings.inspection && event.inspection,
       // Typing a time means there is no clock on screen; leaving the space bar
       // armed would start one anyway, invisibly, and hide the interface for it.
-      enabled: !typedEntry,
+      // An open sheet is the same: space on its focused button would start a
+      // solve behind it.
+      enabled: !typedEntry && detail === null && pendingMbld === null,
     },
   )
 
@@ -405,7 +407,7 @@ export default function TimerPanel({
   // no longer allowed to consult is the last thing that should still be up.
   // Which means the interface goes at the start of inspection and comes back
   // when the solve ends, rather than blinking away between the two.
-  const solving = (timing || isInspecting(phase, inspectMs)) && settings.hideUiWhileRunning
+  const solving = (timing || inspecting) && settings.hideUiWhileRunning
 
   // Reported rather than read, so the class this drives can go on the app's own
   // root. The cleanup matters as much as the call: leaving the timer mid-solve
@@ -706,16 +708,6 @@ export default function TimerPanel({
   const delta = solves.length >= 2
     ? effectiveMs(solves[solves.length - 1]) - effectiveMs(solves[solves.length - 2])
     : NaN
-
-  // Both of these are pure functions of the timer's state, over in ./display.ts
-  // where they can be checked without a browser.
-  const face = clockText({
-    phase,
-    ms: timing ? ms : restingMs,
-    inspectMs,
-    decimals: settings.decimals,
-    runningDisplay: settings.runningDisplay,
-  })
 
   /** The typed field's own face, read twice below — once for its value and once
       to size the box to it. */
@@ -1119,7 +1111,14 @@ export default function TimerPanel({
                   onKeyDown={onEntryKey}
                 />
               ) : (
-                <div className={`clock ${clockPhase(phase, inspectMs)}`}>{face}</div>
+                <LiveClock
+                  phase={phase}
+                  since={since}
+                  inspecting={inspecting}
+                  restingMs={restingMs}
+                  decimals={settings.decimals}
+                  runningDisplay={settings.runningDisplay}
+                />
               )}
               {settings.showDelta && !timing && Number.isFinite(delta) && (
                 <span className={delta < 0 ? 'clock-delta good' : 'clock-delta bad'}>

@@ -44,13 +44,18 @@ export function useTimer(
     { holdMs = 400, split = false, inspection = false, enabled = true }: TimerOptions = {},
 ) {
     const [phase , setPhase] = useState<Phase>('idle')
-    const [ms, setMs] = useState(0)
     const [memoMs, setMemoMs] = useState<number | null>(null)
-    /** Counts up from zero while inspecting; only meaningful in that phase. */
-    const [inspectMs, setInspectMs] = useState(0)
+    /**
+     * When the solve and the inspection began, for the clock to count from.
+     *
+     * Not a running total: one updated every frame re-rendered everything that
+     * holds this hook — the whole timer, solve list and charts included — sixty
+     * times a second for as long as you solved. `<LiveClock>` reads these and
+     * runs its own frame loop. Inspection's is 0 when there is none.
+     */
+    const [since, setSince] = useState({ solve: 0, inspection: 0 })
 
-    // Timestamps are refs, durations are state: nothing renders an absolute
-    // performance.now() reading, so changing one shouldn't cost a render.
+    // The handlers read the refs, which are current the instant they're set.
     const startedAt = useRef(0)
     const memoAt = useRef(0)        // absolute split time; 0 means not split yet
     const inspectAt = useRef(0)
@@ -100,7 +105,7 @@ export function useTimer(
             if (event.key === 'Escape' && (phase === 'inspecting' || inspectAt.current > 0)) {
                 event.preventDefault()
                 inspectAt.current = 0
-                setInspectMs(0)
+                setSince((was) => ({ ...was, inspection: 0 }))
                 setPhase('idle')
                 return
             }
@@ -122,7 +127,6 @@ export function useTimer(
 
                 event.preventDefault()
                 const elapsed = performance.now() - startedAt.current
-                setMs(elapsed)
                 setPhase('idle')
                 stop.current(
                     elapsed,
@@ -144,7 +148,7 @@ export function useTimer(
             if (phase === 'idle') {
                 if (inspection) {
                     inspectAt.current = performance.now()
-                    setInspectMs(0)
+                    setSince((was) => ({ ...was, inspection: inspectAt.current }))
                     setPhase('inspecting')
                 } else {
                     setPhase('holding')
@@ -163,11 +167,10 @@ export function useTimer(
                 // Both halves of "not inspecting" cleared together: the display
                 // reads the elapsed time, so a leftover one would show a hold
                 // counting down fifteen seconds that nobody started.
-                setInspectMs(0)
                 startedAt.current = performance.now()
+                setSince({ solve: startedAt.current, inspection: 0 })
                 memoAt.current = 0
                 setMemoMs(null)
-                setMs(0)
                 setPhase(split ? 'memo' : 'running')
             } else if (phase === 'holding') {
                 // Letting go early goes back where it came from, so an aborted
@@ -175,13 +178,25 @@ export function useTimer(
                 setPhase(inspection && inspectAt.current > 0 ? 'inspecting' : 'idle')
             }
         }
+        // A space released in another window never reaches this one, so a hold
+        // left behind by Cmd-Tab would sit armed and start the clock on your next
+        // press. Losing focus counts as letting go early.
+        function onLeave() {
+            if (phase === 'holding' || phase === 'ready') {
+                setPhase(inspection && inspectAt.current > 0 ? 'inspecting' : 'idle')
+            }
+        }
         if (!enabled) return
 
         document.addEventListener('keydown', onKeyDown)
         document.addEventListener('keyup', onKeyUp)
+        window.addEventListener('blur', onLeave)
+        document.addEventListener('visibilitychange', onLeave)
         return () => {
             document.removeEventListener('keydown', onKeyDown)
             document.removeEventListener('keyup', onKeyUp)
+            window.removeEventListener('blur', onLeave)
+            document.removeEventListener('visibilitychange', onLeave)
         }
     }, [phase, split, inspection, enabled])
 
@@ -191,39 +206,12 @@ export function useTimer(
         return () => clearTimeout(id)
     }, [phase, holdMs])
 
-    // One clock across both timed phases — memo and exec are a split of a single
-    // continuous run, not two separate timings.
-    useEffect (() => {
-        if (phase !== 'memo' && phase !== 'running') return
+    // Inspection is still on through the hold and the armed pause that end it —
+    // getting ready is part of your fifteen seconds, not a break in them.
+    const inspecting = phase === 'inspecting'
+        || ((phase === 'holding' || phase === 'ready') && since.inspection > 0)
 
-        let id = 0
-        function tick() {
-            setMs(performance.now() - startedAt.current)
-            id = requestAnimationFrame(tick)
-        }
-        id = requestAnimationFrame(tick)
-        return () => cancelAnimationFrame(id)
-    }, [phase])
-
-    // Inspection runs on its own clock, and keeps running through the hold and
-    // the armed pause after it — getting ready is part of your fifteen seconds,
-    // not a break in them. Stopping at 'ready' froze the countdown and dropped
-    // the previous solve's time back on screen at the moment you were about to
-    // start.
-    useEffect(() => {
-        const armed = phase === 'holding' || phase === 'ready'
-        if (phase !== 'inspecting' && !(armed && inspectAt.current > 0)) return
-
-        let id = 0
-        function tick() {
-            setInspectMs(performance.now() - inspectAt.current)
-            id = requestAnimationFrame(tick)
-        }
-        id = requestAnimationFrame(tick)
-        return () => cancelAnimationFrame(id)
-    }, [phase])
-
-    return { phase, ms, memoMs, inspectMs }
+    return { phase, memoMs, since, inspecting }
 }
 
 export { INSPECT_MS, INSPECT_DNF_MS }

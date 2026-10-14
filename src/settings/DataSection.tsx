@@ -5,6 +5,7 @@ import {
   eraseEverything, getImportCopy, getSnapshot, restoreImportCopy, restoreSnapshot, takeImportCopy,
   type ImportCopy, type Snapshot,
 } from '../data/snapshot'
+import { announceReplaced, flushPendingSaves, reloadPage } from '../data/persist'
 import { Row } from './controls'
 
 /**
@@ -33,10 +34,11 @@ async function undoLastImport(): Promise<boolean> {
     'Put everything back as it was before the last backup import? Anything ' +
     'changed since that import is lost.',
   )) return false
+  flushPendingSaves()
   if (!(await restoreImportCopy())) return false
-  // Reloaded for the same reason the import is: half the app's state is
-  // already in React, and a page still holding it would write it straight back.
-  window.location.reload()
+  // Reloaded rather than read back in: the copy may hold slots this build
+  // reads only at start-up.
+  reloadPage()
   return true
 }
 
@@ -51,6 +53,8 @@ export function BackupPanel() {
   async function save() {
     setError(null)
     try {
+      // The export reads storage, so the last few changes go there first.
+      flushPendingSaves()
       downloadText(`rubiks-trainer-${stamp()}.json`, await exportAll())
     } catch (problem) {
       setError((problem as Error).message)
@@ -67,6 +71,10 @@ export function BackupPanel() {
       return
     }
 
+    // Anything still waiting to be saved is saved first: the copy below reads
+    // storage, and a write left pending would land on top of the import.
+    flushPendingSaves()
+
     // A copy of what is here now, before anything is written over it. A browser
     // that can't keep one still gets its import, just without the undo.
     let copied = true
@@ -77,8 +85,12 @@ export function BackupPanel() {
     }
 
     try {
-      setReport(await importAll(await file.text()))
+      const result = await importAll(await file.text())
+      setReport(result)
       setUndoable(copied)
+      // Read straight back in, so the page still showing the old data can't
+      // save it over the new.
+      if (result.restored > 0) announceReplaced()
     } catch (problem) {
       setError((problem as Error).message)
     }
@@ -113,11 +125,6 @@ export function BackupPanel() {
                   ))}
                 </ul>
                 <div className="actions">
-                  {report.restored > 0 && (
-                    <button type="button" className="primary" onClick={() => window.location.reload()}>
-                      reload to use them
-                    </button>
-                  )}
                   {undoable && (
                     <button
                       type="button"
@@ -181,7 +188,8 @@ export function SnapshotRestore() {
       'version first ran. Continue?',
     )) return
 
-    if (await restoreSnapshot()) window.location.reload()
+    flushPendingSaves()
+    if (await restoreSnapshot()) reloadPage()
     else setError('That copy could not be written back.')
   }
 
@@ -248,7 +256,7 @@ export function DeleteEverything() {
     if (!armed) return
     await eraseEverything()
     // Reloaded rather than cleared in place, for the same reason as a restore.
-    window.location.reload()
+    reloadPage()
   }
 
   return (
