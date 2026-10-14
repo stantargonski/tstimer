@@ -15,11 +15,13 @@ function signed(amount: number): string {
 }
 
 /**
- * Clock.
+ * Clock, exactly as the WCA's scrambler (TNoodle) writes it.
  *
- * Nine dial positions from the front, then the cube is flipped and four more
- * plus an all-dials turn, then the pin configuration. Every dial reads -5 to +6
- * because that is the full range of the twelve-hour face relative to zero.
+ * Nine dial positions from the front, then the puzzle is flipped and four more
+ * plus an all-dials turn. Every dial reads -5 to +6 because that is the full
+ * range of the twelve-hour face relative to zero. No pin state on the end:
+ * TNoodle stopped writing one, and the `UdUU` suffix this used to add was a
+ * notation no other timer reads.
  */
 const CLOCK_FRONT = ['UR', 'DR', 'DL', 'UL', 'U', 'R', 'D', 'L', 'ALL'];
 const CLOCK_BACK = ['U', 'R', 'D', 'L', 'ALL'];
@@ -33,10 +35,6 @@ export function scrambleClock(): string[] {
   const moves = CLOCK_FRONT.map((face) => `${face}${dial()}`);
   moves.push('y2');
   moves.push(...CLOCK_BACK.map((face) => `${face}${dial()}`));
-
-  // Which pins are up going in. All four down is a legal state and does come up.
-  const pins = Array.from({ length: 4 }, () => pick(['U', 'd'])).join('');
-  moves.push(pins);
   return moves;
 }
 

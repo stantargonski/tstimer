@@ -10,14 +10,17 @@ import type { WcaEvent } from './events';
  * is a field on the event itself.
  */
 export interface CompFormat {
-  id: 'ao5' | 'mo3';
+  id: 'ao5' | 'mo3' | 'bo3';
   size: number;
   trimmed: boolean;
+  /** Scored by the best attempt alone rather than by any average. */
+  bestOf?: boolean;
 }
 
 export const FORMATS: Record<CompFormat['id'], CompFormat> = {
   ao5: { id: 'ao5', size: 5, trimmed: true },
   mo3: { id: 'mo3', size: 3, trimmed: false },
+  bo3: { id: 'bo3', size: 3, trimmed: false, bestOf: true },
 };
 
 export function formatOf(event: WcaEvent): CompFormat {
@@ -29,6 +32,7 @@ export function resultOf(format: CompFormat, times: number[]): number {
   if (times.length < format.size) return NaN;
 
   const round = times.slice(0, format.size);
+  if (format.bestOf) return Math.min(...round);
   return format.trimmed ? trimmedAverage(round) : simpleMean(round);
 }
 

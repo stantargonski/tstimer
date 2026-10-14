@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { formatTime } from './format'
+import { formatTime, solveText } from './format'
 import { EVENTS, eventOf, type EventId } from './events'
 import {
-  ao5TrendPerHour, average, best, bestAverage, durationText, mean, totalTime,
+  ao5TrendPerHour, average, bestAverage, bestSingleIndex, durationText, mean, totalTime,
 } from './stats'
 import { activeSession, type Solve, type TimerStore } from './types'
 import TimeChart from './charts/TimeChart'
@@ -28,11 +28,10 @@ import { BENCH_MAX, type TimerSettings } from './settings'
  * time — which for this one means the picker closing on every keystroke
  * elsewhere on the page.
  */
-function BenchCard({ title, bench, valueFor, decimals, onToggle }: {
+function BenchCard({ title, bench, valueFor, onToggle }: {
   title: string
   bench: EventId[]
-  valueFor: (id: EventId) => number
-  decimals: 2 | 3
+  valueFor: (id: EventId) => string
   onToggle: (id: EventId) => void
 }) {
   /** Whether this strip's event picker is open. */
@@ -45,7 +44,7 @@ function BenchCard({ title, bench, valueFor, decimals, onToggle }: {
         {bench.map((id) => (
           <div className="bench" key={id}>
             <span className="bench-label">{eventOf(id).short}</span>
-            <strong className="bench-value">{formatTime(valueFor(id), decimals)}</strong>
+            <strong className="bench-value">{valueFor(id)}</strong>
           </div>
         ))}
         <button
@@ -147,13 +146,22 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
    * a session gives you — used to poison the Math.min across all of them and
    * blank this figure for good.
    */
-  function bestFor(id: EventId): number {
-    return best(byEvent.get(id) ?? [])
+  function bestFor(id: EventId): string {
+    return bestText(byEvent.get(id) ?? [])
   }
 
-  /** The same, for the best ao5 that event has ever produced. */
-  function bestAo5For(id: EventId): number {
-    return bestAverage(byEvent.get(id) ?? [], 5)
+  /** The same, for the best ao5 that event has ever produced. Multi-blind has
+      no average to show. */
+  function bestAo5For(id: EventId): string {
+    if (eventOf(id).scramble.kind === 'mbf') return formatTime(NaN)
+    return formatTime(bestAverage(byEvent.get(id) ?? [], 5), decimals)
+  }
+
+  /** The best single as it reads in a table — cubes and time for multi-blind. */
+  function bestText(solves: Solve[]): string {
+    if (solves.length === 0) return formatTime(NaN)
+    const at = bestSingleIndex(solves)
+    return at < 0 ? formatTime(Infinity) : solveText(solves[at], decimals)
   }
 
   /**
@@ -227,14 +235,12 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
         title="all-time best single"
         bench={settings.benchEvents}
         valueFor={bestFor}
-        decimals={decimals}
         onToggle={(id) => toggleBench('benchEvents', id)}
       />
       <BenchCard
         title="all-time best ao5"
         bench={settings.benchAo5Events}
         valueFor={bestAo5For}
-        decimals={decimals}
         onToggle={(id) => toggleBench('benchAo5Events', id)}
       />
 
@@ -301,9 +307,9 @@ export default function StatsPage({ store, settings, onSettings }: StatsPageProp
                   <tr key={item.id}>
                     <th scope="row">{item.name}</th>
                     <td>{solves.length}</td>
-                    <td>{formatTime(best(solves), decimals)}</td>
-                    <td>{formatTime(bestAverage(solves, 5), decimals)}</td>
-                    <td>{formatTime(mean(solves), decimals)}</td>
+                    <td>{bestText(solves)}</td>
+                    <td>{bestAo5For(item.id)}</td>
+                    <td>{item.scramble.kind === 'mbf' ? formatTime(NaN) : formatTime(mean(solves), decimals)}</td>
                   </tr>
                 )
               })}

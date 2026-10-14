@@ -31,9 +31,14 @@ export default function EventPicker({ value, onChange, selectRef }: EventPickerP
           onChange(event.target.value as EventId)
         }}
       >
-        {EVENTS.map((event) => (
+        {EVENTS.filter((event) => !event.group).map((event) => (
           <option key={event.id} value={event.id}>{event.name}</option>
         ))}
+        <optgroup label="relays">
+          {EVENTS.filter((event) => event.group === 'relay').map((event) => (
+            <option key={event.id} value={event.id}>{event.name}</option>
+          ))}
+        </optgroup>
       </select>
     </label>
   )

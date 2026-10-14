@@ -1,5 +1,5 @@
 import { cleanName, cleanScramble, isSaneDate, isSaneMs } from '../data/limits';
-import { DEFAULT_EVENT, isEventId, type EventId } from './events';
+import { DEFAULT_EVENT, isEventId, RELAY_CHOICES, type EventId } from './events';
 import {
   emptyTimerStore, type MbldResult, type Session, type Solve, type TimerStore,
 } from './types';
@@ -95,6 +95,7 @@ export function migrate(input: unknown): TimerStore {
         id: session.id,
         name: cleanName(session.name, 'Session'),
         event,
+        ...readRelay(session),
         createdAt: typeof session.createdAt === 'number' ? session.createdAt : 0,
         solves: Array.isArray(session.solves)
           ? session.solves.map((solve) => readSolve(solve, event)).filter(isSolve)
@@ -110,6 +111,15 @@ export function migrate(input: unknown): TimerStore {
 }
 
 /** v3's `event` if it's there and real, otherwise v2's `mode`, otherwise 3x3. */
+/** A custom relay's list, kept only if every entry is still an event the relay
+    can hold; anything else leaves the session on the default. */
+function readRelay(session: { relay?: unknown }): { relay?: EventId[] } {
+  const list = session.relay;
+  if (!Array.isArray(list) || list.length === 0 || list.length > RELAY_CHOICES.length * 2) return {};
+  if (!list.every((id) => RELAY_CHOICES.includes(id as EventId))) return {};
+  return { relay: list as EventId[] };
+}
+
 function readEvent(session: { event?: unknown; mode?: unknown }): EventId {
   if (isEventId(session.event)) return session.event;
   return session.mode === '3bld' ? '333bf' : DEFAULT_EVENT;

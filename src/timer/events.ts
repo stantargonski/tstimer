@@ -13,7 +13,8 @@ export type EventId =
   | '222' | '333' | '444' | '555' | '666' | '777'
   | '333bf' | '333oh' | '333fm'
   | 'clock' | 'minx' | 'pyram' | 'skewb' | 'sq1'
-  | '444bf' | '555bf' | '333mbf';
+  | '444bf' | '555bf' | '333mbf'
+  | 'guildford' | 'miniguild' | 'relay';
 
 /**
  * How a scramble is built. The generator switches on this rather than on the
@@ -29,7 +30,12 @@ export type ScrambleKind =
   | { kind: 'minx' }
   | { kind: 'pyram' }
   | { kind: 'skewb' }
-  | { kind: 'sq1' };
+  | { kind: 'sq1' }
+  /**
+   * Several puzzles back to back on one clock. A preset carries its list; the
+   * custom relay's is the session's own, so each session can be a different one.
+   */
+  | { kind: 'relay'; events?: EventId[] };
 
 export interface WcaEvent {
   id: EventId;
@@ -38,16 +44,19 @@ export interface WcaEvent {
   /** Two to five characters, for tags and table rows. */
   short: string;
   scramble: ScrambleKind;
+  /** WCA events first in the picker, then the relays, which the WCA doesn't hold. */
+  group?: 'relay';
   /** Whether the scramble preview can draw this puzzle at all. */
   preview: 'nxn' | 'none';
   /** Cube width, when there is one. Drives the preview and the scramble. */
   size?: number;
   /** Memo and execution are timed separately — true for every blindfolded event. */
   split: boolean;
-  /** WCA inspection applies. False for blindfolded events and FMC. */
+  /** WCA inspection applies. False for blindfolded events, FMC and relays. */
   inspection: boolean;
-  /** How a competition round of this event is scored. */
-  format: 'ao5' | 'mo3';
+  /** How a competition round of this event is scored. Multi-blind is a best
+      of three: the WCA has no average for it. */
+  format: 'ao5' | 'mo3' | 'bo3';
 }
 
 /**
@@ -72,8 +81,31 @@ export const EVENTS: WcaEvent[] = [
   { id: 'sq1', name: 'Square-1', short: 'Sq-1', preview: 'none', split: false, inspection: true, format: 'ao5', scramble: { kind: 'sq1' } },
   { id: '444bf', name: '4x4 Blindfolded', short: '4BLD', size: 4, preview: 'nxn', split: true, inspection: false, format: 'mo3', scramble: { kind: 'nxnbf', size: 4, length: 40 } },
   { id: '555bf', name: '5x5 Blindfolded', short: '5BLD', size: 5, preview: 'nxn', split: true, inspection: false, format: 'mo3', scramble: { kind: 'nxnbf', size: 5, length: 60 } },
-  { id: '333mbf', name: '3x3 Multi-Blind', short: 'MBLD', size: 3, preview: 'none', split: true, inspection: false, format: 'mo3', scramble: { kind: 'mbf', count: 3 } },
+  { id: '333mbf', name: '3x3 Multi-Blind', short: 'MBLD', size: 3, preview: 'none', split: true, inspection: false, format: 'bo3', scramble: { kind: 'mbf', count: 3 } },
+  { id: 'guildford', name: 'Guildford', short: 'Guild', group: 'relay', preview: 'none', split: false, inspection: false, format: 'ao5', scramble: { kind: 'relay', events: ['222', '333', '444', '555', '666', '777', '333oh', 'clock', 'minx', 'pyram', 'skewb', 'sq1'] } },
+  { id: 'miniguild', name: 'Mini Guildford', short: 'Mini G', group: 'relay', preview: 'none', split: false, inspection: false, format: 'ao5', scramble: { kind: 'relay', events: ['222', '333', '444', '555', '333oh', 'clock', 'minx', 'pyram', 'skewb', 'sq1'] } },
+  { id: 'relay', name: 'Custom relay', short: 'Relay', group: 'relay', preview: 'none', split: false, inspection: false, format: 'ao5', scramble: { kind: 'relay' } },
 ];
+
+/**
+ * What a custom relay can hold: every event with a scramble of its own to show.
+ * Multi-blind is left out — it is a count of cubes, not one puzzle.
+ */
+export const RELAY_CHOICES: EventId[] = [
+  '222', '333', '444', '555', '666', '777', '333oh', '333bf', '333fm',
+  'clock', 'minx', 'pyram', 'skewb', 'sq1', '444bf', '555bf',
+];
+
+/** One-click starting points for a custom relay. */
+export const RELAY_PRESETS: { name: string; events: EventId[] }[] = [
+  { name: '2–4', events: ['222', '333', '444'] },
+  { name: '2–5', events: ['222', '333', '444', '555'] },
+  { name: '2–7', events: ['222', '333', '444', '555', '666', '777'] },
+  { name: 'non-cubes', events: ['clock', 'minx', 'pyram', 'skewb', 'sq1'] },
+];
+
+/** A custom relay with no list yet starts as the smallest preset. */
+export const DEFAULT_RELAY: EventId[] = ['222', '333', '444'];
 
 const BY_ID = new Map(EVENTS.map((event) => [event.id, event]));
 

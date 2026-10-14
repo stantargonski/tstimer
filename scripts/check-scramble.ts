@@ -13,7 +13,7 @@ import { scrambleFor, scrambleText } from '../src/timer/scramble';
 import { warmUp, isReady, randomStateScramble } from '../src/timer/scramble/twoByTwo';
 import { randomOrientation } from '../src/timer/scramble/nxn';
 import { solvedCube, stateAfter } from '../src/cube/nxn';
-import { scrambleSquare1 } from '../src/timer/scramble/other';
+import { scrambleClock, scrambleSquare1 } from '../src/timer/scramble/other';
 
 const failures: string[] = [];
 
@@ -178,8 +178,8 @@ function checkEventTable(): void {
     check(event.split === event.id.includes('bf'), `${event.id}: split disagrees with being blindfolded`);
     if (!event.inspection) {
       check(
-        event.id.includes('bf') || event.id === '333fm',
-        `${event.id}: skips inspection but is neither blindfolded nor FMC`,
+        event.id.includes('bf') || event.id === '333fm' || event.scramble.kind === 'relay',
+        `${event.id}: skips inspection but is neither blindfolded, FMC nor a relay`,
       );
     }
   }
@@ -219,7 +219,20 @@ function checkSquare1(): void {
   }
 }
 
+/** Clock in TNoodle's own format: nine front dials, y2, five back, no pins. */
+function checkClock(): void {
+  const dial = '(?:[0-6]\\+|[1-5]-)';
+  const shape = new RegExp(
+    `^UR${dial} DR${dial} DL${dial} UL${dial} U${dial} R${dial} D${dial} L${dial} ALL${dial} y2 U${dial} R${dial} D${dial} L${dial} ALL${dial}$`,
+  );
+  for (let trial = 0; trial < 500; trial += 1) {
+    const text = scrambleClock().join(' ');
+    check(shape.test(text), `clock: not in TNoodle's format: ${text}`);
+  }
+}
+
 checkEventTable();
+checkClock();
 checkSquare1();
 checkEveryEvent();
 checkNotSolved();

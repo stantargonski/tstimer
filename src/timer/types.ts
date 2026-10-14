@@ -56,6 +56,9 @@ export interface Session {
       the stats — a blindfolded session splits memo from execution and skips
       inspection, a 3x3 one does neither. */
   event: EventId;
+  /** The puzzles in a custom relay, in order. Only read when `event` is the
+      custom relay; absent everywhere else. */
+  relay?: EventId[];
   createdAt: number;
   /** Chronological, oldest first. The list UI reverses for display; the stats
       helpers rely on this order so `slice(-n)` means "the most recent n". */
@@ -81,6 +84,25 @@ export function effectiveMs(solve: Solve): number {
   if (solve.penalty === 'dnf') return Infinity;
   return solve.penalty === 'plus2' ? solve.ms + 2000 : solve.ms;
 }
+
+/**
+ * What a solve is ranked by: lower is better.
+ *
+ * The time for every event but multi-blind, which the WCA ranks by points
+ * first and time second (9f12c) — 10/10 in 55:00 beats 2/2 in 10:00. A scored
+ * attempt is pushed below every time by its points, so `best` and friends need
+ * no branch of their own. An unscored multi-blind solve, from before results
+ * were asked for, ranks by its time like anything else.
+ */
+export function rankOf(solve: Solve): number {
+  const time = effectiveMs(solve);
+  if (!solve.mbld || !Number.isFinite(time)) return time;
+  return -mbldPoints(solve.mbld) * MBLD_RANK_STEP + time;
+}
+
+/** Wider than any multi-blind time can be (the hour limit plus +2s), so a
+    point always outranks any difference in time. */
+const MBLD_RANK_STEP = 10 * 3_600_000;
 
 /** Execution time, derived rather than stored so it can never disagree. */
 export function execMs(solve: Solve): number | null {

@@ -274,6 +274,19 @@ check(!Number.isFinite(broken.times[2]), 'a DNF is drawn as one');
 check(!Number.isFinite(broken.ao5[3]), 'two DNFs in an ao5 make it a DNF');
 check(Number.isFinite(broken.ao5[7]), 'and the line picks up once one of them has left the window');
 
+// ---- multi-blind ranks by points, then time (WCA 9f12c) ----
+{
+  const multi = (ms: number, solved: number, attempted: number): Solve => ({
+    id: ms, ms, memoMs: null, penalty: 'none', scramble: '', event: '333mbf', mbld: { solved, attempted },
+  });
+  const quick = multi(600_000, 2, 2);        // 2 points in 10:00
+  const big = multi(3_300_000, 10, 10);      // 10 points in 55:00
+  const tie = multi(3_000_000, 10, 10);      // 10 points in 50:00
+  check(best([quick, big]) === 3_300_000, 'multi-blind: more points beats a faster time');
+  check(best([quick, big, tie]) === 3_000_000, 'multi-blind: equal points go to the faster time');
+  check(resultOf(FORMATS.bo3, [5000, 4000, Infinity]) === 4000, 'a best-of-3 round is its best attempt');
+}
+
 if (failures.length > 0) {
   console.error(`✗ ${failures.length} failure(s):`);
   for (const message of failures) console.error(`  ${message}`);

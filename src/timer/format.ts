@@ -7,6 +7,17 @@
  */
 export type Decimals = 0 | 1 | 2 | 3;
 
+/** What a solve reads as in a results table: its time, or for a scored
+    multi-blind attempt the cubes and then the time, "8/10 55:12.00". */
+export function solveText(
+  solve: { ms: number; penalty: string; mbld?: { solved: number; attempted: number } },
+  decimals: Decimals = 2,
+): string {
+  const time = solve.penalty === 'dnf' ? Infinity : solve.ms + (solve.penalty === 'plus2' ? 2000 : 0);
+  if (!solve.mbld || !Number.isFinite(time)) return formatTime(time, decimals);
+  return `${solve.mbld.solved}/${solve.mbld.attempted} ${formatTime(time, decimals)}`;
+}
+
 export function formatTime(ms: number, decimals: Decimals = 2): string {
   if (Number.isNaN(ms)) return '—';
   if (!Number.isFinite(ms)) return 'DNF';

@@ -5,11 +5,12 @@ import { keyHint, withHint, type Keymap } from '../keys/keymap'
 import { popDeleted, pushDeleted } from './undo'
 import LiveClock from './LiveClock'
 import { digitsFace, formatTime, maxEntryDigits, parseDigits } from './format'
-import { eventOf, type EventId, type WcaEvent } from './events'
+import { DEFAULT_RELAY, eventOf, type EventId, type WcaEvent } from './events'
 import { prepare, scrambleFor, scrambleText, type Scramble } from './scramble'
 import EventPicker from './EventPicker'
 import MbldCount from './MbldCount'
 import MbldPrompt from './MbldPrompt'
+import RelayPicker from './RelayPicker'
 import ScrambleBanner from './ScrambleBanner'
 import ScramblePreview from './ScramblePreview'
 import SessionGraph from './SessionGraph'
@@ -231,7 +232,9 @@ export default function TimerPanel({
   // straight back without anyone touching a setting.
   const bldClosed = event.split && settings.hideBldPreview
 
-  const options = { mbldCount: settings.mbldCount }
+  const options = { mbldCount: settings.mbldCount, relay: session.relay }
+  /** What the queue depends on: the event, and for a custom relay its puzzles. */
+  const queueKey = `${session.event}|${session.event === 'relay' ? (session.relay ?? []).join(',') : ''}`
   const [scrambles, setScrambles] = useState<Scramble[]>(() => [scrambleFor(event, options)])
   const [index, setIndex] = useState(0)
   /**
@@ -243,8 +246,8 @@ export default function TimerPanel({
    * the peek the setting is there to prevent.
    */
   const [peekFor, setPeekFor] = useState<Scramble | null>(null)
-  /** The event the queue in `scrambles` was built for. */
-  const [builtFor, setBuiltFor] = useState(session.event)
+  /** The event (and relay) the queue in `scrambles` was built for. */
+  const [builtFor, setBuiltFor] = useState(queueKey)
 
   // The session owns the event, so switching sessions switches the puzzle out
   // from under the queue — and a 4x4 scramble left over from the last session is
@@ -252,8 +255,8 @@ export default function TimerPanel({
   // rather than from an effect a frame later, which would paint the old puzzle's
   // scramble first. This is also the only path the event picker needs: it writes
   // the session's event and the queue follows.
-  if (builtFor !== session.event) {
-    setBuiltFor(session.event)
+  if (builtFor !== queueKey) {
+    setBuiltFor(queueKey)
     setScrambles([scrambleFor(event, options)])
     setIndex(0)
   }
@@ -302,7 +305,7 @@ export default function TimerPanel({
 
   /** Throws away the queue and starts a fresh one for `next`. */
   function restart(next: WcaEvent, mbldCount = settings.mbldCount) {
-    setScrambles([scrambleFor(next, { mbldCount })])
+    setScrambles([scrambleFor(next, { mbldCount, relay: session.relay })])
     setIndex(0)
   }
 
@@ -313,8 +316,16 @@ export default function TimerPanel({
     restart(event, mbldCount)
   }
 
+  /** A custom relay's puzzles; the queue follows through `queueKey`. */
+  function setRelay(relay: EventId[]) {
+    updateActive((item) => ({ ...item, relay }))
+  }
+
   function createSession() {
-    const created = newSession(`Session ${store.sessions.length + 1}`, session.event)
+    const created = {
+      ...newSession(`Session ${store.sessions.length + 1}`, session.event),
+      ...(session.relay ? { relay: session.relay } : {}),
+    }
     setStore((prev) => ({
       ...prev,
       sessions: [...prev.sessions, created],
@@ -335,6 +346,7 @@ export default function TimerPanel({
   }
 
   const format = formatOf(event)
+  const multiBlind = event.scramble.kind === 'mbf'
   const openRound =
     round && round.sessionId === session.id && round.event === session.event ? round : null
   const roundTimes = openRound ? solves.slice(openRound.start).map(effectiveMs) : []
@@ -537,7 +549,7 @@ export default function TimerPanel({
   // The three rail switches, shared by their buttons and their keys.
   function toggleComp() {
     if (openRound) setRound(null)
-    else startRound()
+    else if (!multiBlind) startRound()
   }
 
   /** In a blindfolded event this opens the preview for the scramble on screen
@@ -822,6 +834,9 @@ export default function TimerPanel({
         {event.scramble.kind === 'mbf' && (
           <MbldCount value={settings.mbldCount} onChange={setMbldCount} />
         )}
+        {event.id === 'relay' && (
+          <RelayPicker value={session.relay ?? DEFAULT_RELAY} onChange={setRelay} />
+        )}
       </ScrambleBanner>
     )
   }
@@ -855,7 +870,10 @@ export default function TimerPanel({
           className="rail-tool"
           aria-pressed={openRound !== null}
           aria-label="comp sim"
-          title={withHint('comp sim', keymap, 'toggleComp')}
+          // A round of multi-blind is one or three hour-long attempts scored on
+          // cubes solved; a goal time to chase means nothing there.
+          disabled={multiBlind && openRound === null}
+          title={multiBlind ? 'comp sim is not for multi-blind' : withHint('comp sim', keymap, 'toggleComp')}
           onClick={toggleComp}
         >
           🏁{compact ? '' : ' comp sim'}

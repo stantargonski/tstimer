@@ -1,4 +1,4 @@
-import { effectiveMs, execMs, type Solve } from './types';
+import { effectiveMs, execMs, rankOf, type Solve } from './types';
 
 /**
  * Three return values everything downstream agrees on:
@@ -10,10 +10,8 @@ import { effectiveMs, execMs, type Solve } from './types';
 
 export function best(solves: Solve[]): number {
   if (solves.length === 0) return NaN;
-
-  let lowest = Infinity;
-  for (const solve of solves) lowest = Math.min(lowest, effectiveMs(solve));
-  return lowest;   // stays Infinity — correctly a DNF — if every solve was one
+  const at = bestSingleIndex(solves);
+  return at < 0 ? Infinity : effectiveMs(solves[at]);   // all DNF is a DNF
 }
 
 export function worst(solves: Solve[]): number {
@@ -235,8 +233,9 @@ export function bestSingleIndex(solves: Solve[]): number {
   let lowest = Infinity;
   let at = -1;
 
+  // By rank rather than time, so multi-blind is points first.
   for (let index = 0; index < solves.length; index += 1) {
-    const value = effectiveMs(solves[index]);
+    const value = rankOf(solves[index]);
     if (Number.isFinite(value) && value < lowest) {
       lowest = value;
       at = index;
