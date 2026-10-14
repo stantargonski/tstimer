@@ -1,4 +1,4 @@
-import type { WcaEvent } from '../events';
+import { DEFAULT_RELAY, eventOf, type EventId, type WcaEvent } from '../events';
 import { leadingFace, randomNxN, randomOrientation } from './nxn';
 import {
   scrambleClock, scrambleMegaminx, scramblePyraminx, scrambleSkewb, scrambleSquare1,
@@ -25,6 +25,8 @@ export const NO_SCRAMBLE: Scramble = { moves: [] };
 export interface ScrambleOptions {
   /** How many cubes a multi-blind attempt is for. Ignored by every other event. */
   mbldCount?: number;
+  /** The puzzles in a custom relay. Ignored by every other event. */
+  relay?: EventId[];
 }
 
 /**
@@ -97,6 +99,19 @@ export function scrambleFor(event: WcaEvent, options: ScrambleOptions = {}): Scr
 
     case 'sq1':
       return { moves: scrambleSquare1() };
+
+    // One line per puzzle, named, in the order they're solved. A puzzle whose
+    // scramble is rows of its own (megaminx) gets its name on a line above them.
+    case 'relay': {
+      const lines = (spec.events ?? options.relay ?? DEFAULT_RELAY).flatMap((id) => {
+        const part = eventOf(id);
+        const sub = scrambleFor(part, options);
+        return sub.lines
+          ? [`${part.short}:`, ...sub.lines]
+          : [`${part.short}: ${sub.moves.join(' ')}`];
+      });
+      return { moves: [], lines };
+    }
   }
 }
 

@@ -80,15 +80,22 @@ export default function SessionGraph({
   const plotWidth = panel.box.width - INSET * 2
   const plotHeight = panel.box.height - INSET * 2
 
-  // The timer re-renders on every tick of a running clock, and none of this
-  // changes unless a solve or the panel does.
-  const drawn = useMemo(() => {
+  // Split in two so a resize, which changes every frame of the drag, only
+  // redoes the scaling: the series walks the whole session for its averages,
+  // and that changes only when a solve or the span does.
+  const scale = useMemo(() => {
     const series = graphSeries(solves, span)
-    const finite = series.times.filter((value) => Number.isFinite(value))
-    if (finite.length < 2) return null
-
-    const low = Math.min(...finite)
-    const high = Math.max(...finite)
+    let low = Infinity
+    let high = -Infinity
+    let finite = 0
+    // A loop rather than Math.min(...): spread past ~100k values overflows the stack.
+    for (const value of series.times) {
+      if (!Number.isFinite(value)) continue
+      finite += 1
+      if (value < low) low = value
+      if (value > high) high = value
+    }
+    if (finite < 2) return null
     // A flat window would otherwise divide by zero; give it a band to sit in.
     const spread = high - low || Math.max(high * 0.1, 1000)
     const ceiling = high + spread * 0.12
@@ -105,6 +112,12 @@ export default function SessionGraph({
     if (lines.length > 3) lines = gridlines(niceStep(ceiling - floor, 2))
 
     const labels = lines.map((value) => formatTime(value, decimals))
+    return { series, floor, ceiling, lines, labels }
+  }, [solves, span, decimals])
+
+  const drawn = useMemo(() => {
+    if (!scale) return null
+    const { series, floor, ceiling, lines, labels } = scale
     // As wide as the longest label needs, so a 3x3 session isn't pushed right
     // to make room for the minutes a 3BLD one would carry.
     const left = Math.max(...labels.map((label) => label.length)) * LABEL_CHAR + 8
@@ -128,7 +141,7 @@ export default function SessionGraph({
       ao5: linePath(series.ao5, x, y),
       ao12: linePath(series.ao12, x, y),
     }
-  }, [solves, span, decimals, plotWidth, plotHeight])
+  }, [scale, plotWidth, plotHeight])
 
   /** Nearest-index rather than hit-testing the dots — see TimeChart's `track`. */
   function track(move: PointerEvent<SVGRectElement>) {
@@ -157,6 +170,7 @@ export default function SessionGraph({
       onPointerMove={panel.onPointerMove}
       onPointerUp={panel.onPointerUp}
       onPointerCancel={panel.onPointerUp}
+      onLostPointerCapture={panel.onLostPointerCapture}
     >
       {!locked && (
         <button

@@ -109,12 +109,16 @@ export interface FitOptions {
   keepOut?: Rect | null;
 }
 
+/** The least a panel is fitted down to. A window narrower than the rail used
+    to squeeze one to nothing — there, but with nothing left to grab. */
+const FIT_MIN = 60;
+
 /** A panel shrunk to fit beside the rail and placed within the frame. */
 export function fitPanel(box: PanelBox, frame: FrameBox): PanelBox {
   if (frame.width === 0) return box;
   const room = frame.width - leftEdge(frame, rectOf(box, frame).top) - 2 * FIT_GAP;
-  const width = Math.max(0, Math.min(box.width, room));
-  const height = Math.max(0, Math.min(box.height, frame.height - 2 * FIT_GAP));
+  const width = Math.min(box.width, Math.max(FIT_MIN, room));
+  const height = Math.min(box.height, Math.max(FIT_MIN, frame.height - 2 * FIT_GAP));
   return { width, height, ...clampPlace(box.right, box.bottom, { width, height }, frame) };
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatTime } from './format'
+import { formatTime, solveText } from './format'
 import {
   average, best, bestAverageWindow, bestSingleIndex, mean, meanExec, meanMemo,
 } from './stats'
@@ -26,6 +26,8 @@ export default function StatsPanel(
   { solves, decimals, event, sessionId, onOpenAverage }: StatsPanelProps,
 ) {
     const latest = solves.length > 0 ? effectiveMs(solves[solves.length-1]) : NaN
+    /** Multi-blind has no averages (WCA 9f12) and its single is cubes and time. */
+    const multi = event.scramble.kind === 'mbf'
 
     // Memoised because the rail redraws on every clock tick and the best-window
     // search walks the whole session once per size — at a hundred that is twenty
@@ -36,19 +38,24 @@ export default function StatsPanel(
     // and stays text: it is the last solve rather than a window over any.
     const rows = useMemo(() => {
       const singleAt = bestSingleIndex(solves)
+      const last = solves[solves.length - 1]
 
       return [
         {
           label: 'single',
           current: latest,
+          currentText: multi && last ? solveText(last, decimals) : null,
           currentWindow: null as Solve[] | null,
           record: best(solves),
+          recordText: multi && singleAt >= 0 ? solveText(solves[singleAt], decimals) : null,
           recordWindow: singleAt >= 0 ? solves.slice(singleAt, singleAt + 1) : null,
         },
-        ...[5, 12, 100].map((size) => {
+        ...(multi ? [] : [5, 12, 100]).map((size) => {
           const record = bestAverageWindow(solves, size)
           return {
             label: `ao${size}`,
+            currentText: null,
+            recordText: null,
             current: average(solves, size),
             currentWindow: solves.length >= size ? solves.slice(-size) : null,
             record: record.value,
@@ -57,7 +64,7 @@ export default function StatsPanel(
           }
         }),
       ]
-    }, [solves, latest])
+    }, [solves, latest, multi, decimals])
 
     const lit = useNewBests(rows, solves.length, sessionId)
 
@@ -66,8 +73,9 @@ export default function StatsPanel(
       value: number,
       window: Solve[] | null,
       recordOf: string | null,
+      shown: string | null = null,
     ) {
-      const text = formatTime(value, decimals)
+      const text = shown ?? formatTime(value, decimals)
       if (!onOpenAverage || !window || Number.isNaN(value)) return text
 
       return (
@@ -95,9 +103,9 @@ export default function StatsPanel(
           {rows.map((row) => (
             <tr key={row.label}>
               <th scope="row">{row.label}</th>
-              <td>{figure(row.label, row.current, row.currentWindow, null)}</td>
+              <td>{figure(row.label, row.current, row.currentWindow, null, row.currentText)}</td>
               <td className={lit.has(row.label) ? 'new-best' : undefined}>
-                {figure(row.label, row.record, row.recordWindow, `best ${row.label}`)}
+                {figure(row.label, row.record, row.recordWindow, `best ${row.label}`, row.recordText)}
               </td>
             </tr>
           ))}
@@ -106,7 +114,7 @@ export default function StatsPanel(
 
       <p className="stats-foot">
         <span>{solves.length} solves</span>
-        <span>mean {formatTime(mean(solves), decimals)}</span>
+        {!multi && <span>mean {formatTime(mean(solves), decimals)}</span>}
       </p>
 
       {event.split && (

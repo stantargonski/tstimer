@@ -52,6 +52,7 @@ export default function PanelEdges({ panel, across = false }: {
           onPointerMove={own(panel.onPointerMove)}
           onPointerUp={own(panel.onPointerUp)}
           onPointerCancel={own(panel.onPointerUp)}
+          onLostPointerCapture={own(panel.onLostPointerCapture)}
         />
       ))}
     </>

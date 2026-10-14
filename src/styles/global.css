@@ -4239,3 +4239,64 @@ textarea,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ----- custom relay ----- */
+/* Beside the event picker, like the multi-blind count: one button naming the
+   relay, opening onto presets and a toggle per puzzle. */
+.relay-picker {
+  position: relative;
+  display: inline-flex;
+}
+.relay-summary {
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 700;
+}
+.relay-summary:hover {
+  color: var(--text);
+}
+.relay-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: min(420px, 90vw);
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.relay-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.relay-preset,
+.relay-chip {
+  padding: 4px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 700;
+}
+.relay-preset:hover,
+.relay-chip:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.relay-chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

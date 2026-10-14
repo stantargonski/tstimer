@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { boxOf, clampPlace, leftEdge, rectOf, type FrameBox, type PanelBox, type Rect } from './panelFit'
 import { snapMove, snapResize, type Edge, type SnapOptions } from './panelSnap'
 import { PREVIEW_MARGIN } from './settings'
@@ -86,6 +86,19 @@ export function useFloatingPanel({
   const [live, setLive] = useState<{ box: PanelBox; edges: Edge[] | null } | null>(null)
   /** What is saved on release — for a move, the saved size rather than the fitted one. */
   const pending = useRef<PanelBox | null>(null)
+  /** The frame the held drag started in. Its arithmetic is in that frame's
+      coordinates, so a window resized mid-drag ends the drag. */
+  const heldIn = useRef<FrameBox | null>(null)
+
+  // Taken off screen mid-drag — a shortcut that hides it — the snap guides it
+  // was drawing would otherwise stay up with nothing left to clear them.
+  const clearGuides = useRef(snap?.onGuides)
+  useEffect(() => {
+    clearGuides.current = snap?.onGuides
+  })
+  useEffect(() => () => {
+    if (heldIn.current) clearGuides.current?.(null)
+  }, [])
 
   /** The snap to apply to this pointer event, or null for a free one. */
   function snapping(event: PointerEvent<HTMLElement>): SnapOptions | null {
@@ -95,8 +108,11 @@ export function useFloatingPanel({
 
   /** From the top-left corner unless told otherwise — the grip drawn there. */
   function startResize(down: PointerEvent<HTMLElement>, edges: Edge[] = ['left', 'top']) {
-    if (locked) return
+    // The main button only: a right-click's menu swallows the release, and the
+    // panel would follow the pointer around until the next click.
+    if (locked || down.button !== 0) return
     down.preventDefault()
+    heldIn.current = frame
     down.currentTarget.setPointerCapture(down.pointerId)
     resizing.current = {
       x: down.clientX, y: down.clientY, edges, rect: rectOf({ width, height, right, bottom }, frame),
@@ -104,8 +120,9 @@ export function useFloatingPanel({
   }
 
   function startMove(down: PointerEvent<HTMLElement>) {
-    if (locked) return
+    if (locked || down.button !== 0) return
     down.preventDefault()
+    heldIn.current = frame
     down.currentTarget.setPointerCapture(down.pointerId)
     moving.current = { x: down.clientX, y: down.clientY, right, bottom }
   }
@@ -141,6 +158,11 @@ export function useFloatingPanel({
   }
 
   function onPointerMove(move: PointerEvent<HTMLElement>) {
+    const start = heldIn.current
+    if (start && (start.width !== frame.width || start.height !== frame.height || start.left !== frame.left)) {
+      finish(move)
+      return
+    }
     const pulled = snapping(move)
     const size = resizing.current
     if (size) {
@@ -187,8 +209,10 @@ export function useFloatingPanel({
     setLive({ box: { width, height, ...next }, edges: null })
   }
 
-  function onPointerUp(up: PointerEvent<HTMLElement>) {
+  /** Let go of, or lost hold of: either way the drag ends where it is drawn. */
+  function finish(up: PointerEvent<HTMLElement>) {
     const held = resizing.current !== null || moving.current !== null
+    heldIn.current = null
     resizing.current = null
     moving.current = null
     if (held) snap?.onGuides(null)
@@ -221,5 +245,10 @@ export function useFloatingPanel({
     }
   }
 
-  return { locked, box, startResize, startMove, onPointerMove, onPointerUp }
+  return {
+    locked, box, startResize, startMove, onPointerMove,
+    onPointerUp: finish,
+    // The capture can go without a pointerup: a context menu, a window switch.
+    onLostPointerCapture: finish,
+  }
 }

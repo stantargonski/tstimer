@@ -3,13 +3,14 @@ import { useTimer } from './useTimer'
 import { useHotkeys } from '../keys/useHotkeys'
 import { keyHint, withHint, type Keymap } from '../keys/keymap'
 import { popDeleted, pushDeleted } from './undo'
-import { clockPhase, clockText, isInspecting } from './display'
+import LiveClock from './LiveClock'
 import { digitsFace, formatTime, maxEntryDigits, parseDigits } from './format'
-import { eventOf, type EventId, type WcaEvent } from './events'
+import { DEFAULT_RELAY, eventOf, type EventId, type WcaEvent } from './events'
 import { prepare, scrambleFor, scrambleText, type Scramble } from './scramble'
 import EventPicker from './EventPicker'
 import MbldCount from './MbldCount'
 import MbldPrompt from './MbldPrompt'
+import RelayPicker from './RelayPicker'
 import ScrambleBanner from './ScrambleBanner'
 import ScramblePreview from './ScramblePreview'
 import SessionGraph from './SessionGraph'
@@ -231,7 +232,9 @@ export default function TimerPanel({
   // straight back without anyone touching a setting.
   const bldClosed = event.split && settings.hideBldPreview
 
-  const options = { mbldCount: settings.mbldCount }
+  const options = { mbldCount: settings.mbldCount, relay: session.relay }
+  /** What the queue depends on: the event, and for a custom relay its puzzles. */
+  const queueKey = `${session.event}|${session.event === 'relay' ? (session.relay ?? []).join(',') : ''}`
   const [scrambles, setScrambles] = useState<Scramble[]>(() => [scrambleFor(event, options)])
   const [index, setIndex] = useState(0)
   /**
@@ -243,8 +246,8 @@ export default function TimerPanel({
    * the peek the setting is there to prevent.
    */
   const [peekFor, setPeekFor] = useState<Scramble | null>(null)
-  /** The event the queue in `scrambles` was built for. */
-  const [builtFor, setBuiltFor] = useState(session.event)
+  /** The event (and relay) the queue in `scrambles` was built for. */
+  const [builtFor, setBuiltFor] = useState(queueKey)
 
   // The session owns the event, so switching sessions switches the puzzle out
   // from under the queue — and a 4x4 scramble left over from the last session is
@@ -252,8 +255,8 @@ export default function TimerPanel({
   // rather than from an effect a frame later, which would paint the old puzzle's
   // scramble first. This is also the only path the event picker needs: it writes
   // the session's event and the queue follows.
-  if (builtFor !== session.event) {
-    setBuiltFor(session.event)
+  if (builtFor !== queueKey) {
+    setBuiltFor(queueKey)
     setScrambles([scrambleFor(event, options)])
     setIndex(0)
   }
@@ -302,7 +305,7 @@ export default function TimerPanel({
 
   /** Throws away the queue and starts a fresh one for `next`. */
   function restart(next: WcaEvent, mbldCount = settings.mbldCount) {
-    setScrambles([scrambleFor(next, { mbldCount })])
+    setScrambles([scrambleFor(next, { mbldCount, relay: session.relay })])
     setIndex(0)
   }
 
@@ -313,8 +316,16 @@ export default function TimerPanel({
     restart(event, mbldCount)
   }
 
+  /** A custom relay's puzzles; the queue follows through `queueKey`. */
+  function setRelay(relay: EventId[]) {
+    updateActive((item) => ({ ...item, relay }))
+  }
+
   function createSession() {
-    const created = newSession(`Session ${store.sessions.length + 1}`, session.event)
+    const created = {
+      ...newSession(`Session ${store.sessions.length + 1}`, session.event),
+      ...(session.relay ? { relay: session.relay } : {}),
+    }
     setStore((prev) => ({
       ...prev,
       sessions: [...prev.sessions, created],
@@ -335,6 +346,7 @@ export default function TimerPanel({
   }
 
   const format = formatOf(event)
+  const multiBlind = event.scramble.kind === 'mbf'
   const openRound =
     round && round.sessionId === session.id && round.event === session.event ? round : null
   const roundTimes = openRound ? solves.slice(openRound.start).map(effectiveMs) : []
@@ -372,7 +384,7 @@ export default function TimerPanel({
 
   const typedEntry = settings.entryMode === 'typed'
 
-  const { phase, ms, inspectMs } = useTimer(
+  const { phase, since, inspecting } = useTimer(
     (finished, memo, penalty) => {
       // Multi-blind is the one event the clock can't finish on its own: how many
       // cubes came out solved decides both the score and whether the attempt
@@ -389,7 +401,9 @@ export default function TimerPanel({
       inspection: settings.inspection && event.inspection,
       // Typing a time means there is no clock on screen; leaving the space bar
       // armed would start one anyway, invisibly, and hide the interface for it.
-      enabled: !typedEntry,
+      // An open sheet is the same: space on its focused button would start a
+      // solve behind it.
+      enabled: !typedEntry && detail === null && pendingMbld === null,
     },
   )
 
@@ -405,7 +419,7 @@ export default function TimerPanel({
   // no longer allowed to consult is the last thing that should still be up.
   // Which means the interface goes at the start of inspection and comes back
   // when the solve ends, rather than blinking away between the two.
-  const solving = (timing || isInspecting(phase, inspectMs)) && settings.hideUiWhileRunning
+  const solving = (timing || inspecting) && settings.hideUiWhileRunning
 
   // Reported rather than read, so the class this drives can go on the app's own
   // root. The cleanup matters as much as the call: leaving the timer mid-solve
@@ -535,7 +549,7 @@ export default function TimerPanel({
   // The three rail switches, shared by their buttons and their keys.
   function toggleComp() {
     if (openRound) setRound(null)
-    else startRound()
+    else if (!multiBlind) startRound()
   }
 
   /** In a blindfolded event this opens the preview for the scramble on screen
@@ -707,16 +721,6 @@ export default function TimerPanel({
     ? effectiveMs(solves[solves.length - 1]) - effectiveMs(solves[solves.length - 2])
     : NaN
 
-  // Both of these are pure functions of the timer's state, over in ./display.ts
-  // where they can be checked without a browser.
-  const face = clockText({
-    phase,
-    ms: timing ? ms : restingMs,
-    inspectMs,
-    decimals: settings.decimals,
-    runningDisplay: settings.runningDisplay,
-  })
-
   /** The typed field's own face, read twice below — once for its value and once
       to size the box to it. */
   const entryFace = digitsFace(entry, settings.typedDecimals)
@@ -830,6 +834,9 @@ export default function TimerPanel({
         {event.scramble.kind === 'mbf' && (
           <MbldCount value={settings.mbldCount} onChange={setMbldCount} />
         )}
+        {event.id === 'relay' && (
+          <RelayPicker value={session.relay ?? DEFAULT_RELAY} onChange={setRelay} />
+        )}
       </ScrambleBanner>
     )
   }
@@ -863,7 +870,10 @@ export default function TimerPanel({
           className="rail-tool"
           aria-pressed={openRound !== null}
           aria-label="comp sim"
-          title={withHint('comp sim', keymap, 'toggleComp')}
+          // A round of multi-blind is one or three hour-long attempts scored on
+          // cubes solved; a goal time to chase means nothing there.
+          disabled={multiBlind && openRound === null}
+          title={multiBlind ? 'comp sim is not for multi-blind' : withHint('comp sim', keymap, 'toggleComp')}
           onClick={toggleComp}
         >
           🏁{compact ? '' : ' comp sim'}
@@ -1119,7 +1129,14 @@ export default function TimerPanel({
                   onKeyDown={onEntryKey}
                 />
               ) : (
-                <div className={`clock ${clockPhase(phase, inspectMs)}`}>{face}</div>
+                <LiveClock
+                  phase={phase}
+                  since={since}
+                  inspecting={inspecting}
+                  restingMs={restingMs}
+                  decimals={settings.decimals}
+                  runningDisplay={settings.runningDisplay}
+                />
               )}
               {settings.showDelta && !timing && Number.isFinite(delta) && (
                 <span className={delta < 0 ? 'clock-delta good' : 'clock-delta bad'}>

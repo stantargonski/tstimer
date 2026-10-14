@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import PairGrid from './bld/letterPairs/PairGrid';
 import FillMode from './bld/letterPairs/FillMode';
-import { loadStore, saveStore } from './bld/letterPairs/storage';
+import { loadStore, PAIRS_KEY, saveStore } from './bld/letterPairs/storage';
 import { isBlankEntry, type PairEntry } from './bld/letterPairs/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings/defaults';
 import TimerPanel from './timer/TimerPanel'
 import CfopPanel from './cfop/CfopPanel';
-import { loadCfopStore, saveCfopStore } from './cfop/storage';
+import { CFOP_KEY, loadCfopStore, saveCfopStore } from './cfop/storage';
 import { isBlankEntry as isBlankCase, type CaseEntry } from './cfop/types';
 import SettingsPage from './settings/SettingsPage';
 import {
@@ -17,7 +17,8 @@ import { getBackground } from './theme/imageStore';
 import {
   DEFAULT_TIMER_SETTINGS, loadTimerSettings, saveTimerSettings, type TimerSettings,
 } from './timer/settings';
-import { loadTimerStore, saveTimerStore } from './timer/storage';
+import { loadTimerStore, saveTimerStore, TIMER_KEY } from './timer/storage';
+import { useOnReplaced, usePersistedStore } from './data/persist';
 import StatsPage from './timer/StatsPage';
 import {
   DEFAULT_KEYMAP, loadKeymap, saveKeymap, withHint, type ActionId, type Keymap,
@@ -71,20 +72,27 @@ export default function App() {
       rail and scramble, but the bar is above it in the tree. */
   const [solving, setSolving] = useState(false);
 
-  const [store, setStore] = useState(loadStore);
+  const [store, setStore] = usePersistedStore(PAIRS_KEY, loadStore, saveStore);
   const [settings, setSettings] = useState(loadSettings);
   const [selected, setSelected] = useState<string | null>(null);
   const [filling, setFilling] = useState(false);
-  const [cases, setCases] = useState(loadCfopStore);
+  const [cases, setCases] = usePersistedStore(CFOP_KEY, loadCfopStore, saveCfopStore);
 
   // Timer settings live up here rather than in TimerPanel: the settings page
   // and the timer both read them, and two copies of a toggle is one copy too
   // many. Appearance is the same story writ larger — it styles every section.
   const [timerSettings, setTimerSettings] = useState(loadTimerSettings);
   const [appearance, setAppearance] = useState(loadAppearance);
-  const [timerStore, setTimerStore] = useState(loadTimerStore);
   const [backgroundNonce, setBackgroundNonce] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The one save worth reporting on. Solves are the only thing here you cannot
+  // retype, so a write that fails has to say so rather than leave the app
+  // looking like it is recording solves it is quietly dropping.
+  const saveSolves = useCallback((next: ReturnType<typeof loadTimerStore>) => {
+    const result = saveTimerStore(next)
+    setSaveError(result.ok ? null : result.reason)
+  }, [])
+  const [timerStore, setTimerStore] = usePersistedStore(TIMER_KEY, loadTimerStore, saveSolves);
   const [keymap, setKeymap] = useState(loadKeymap);
   /** Whether the timer is mid-solve or has a sheet open — anything where a
       letter is not a request to leave the page. Reported for the same reason
@@ -140,10 +148,17 @@ export default function App() {
     updateKeymap(DEFAULT_KEYMAP);
   }
 
-  useEffect(() => {
-    const timer = setTimeout(() => saveStore(store), 400)
-    return () => clearTimeout(timer)
-  }, [store])
+  // A backup import rewrote storage under the app. The three stores read
+  // themselves back in; the settings are read here, where they live.
+  useOnReplaced(useCallback(() => {
+    setSettings(loadSettings())
+    setTimerSettings(loadTimerSettings())
+    const look = loadAppearance()
+    setAppearance(look)
+    applyAppearance(look)
+    setKeymap(loadKeymap())
+    setBackgroundNonce((count) => count + 1)
+  }, []))
 
   // The picture is the one setting that can't be applied synchronously, so it
   // arrives a frame late over an already-correct theme rather than as a flash.
@@ -164,24 +179,6 @@ export default function App() {
       if (url) URL.revokeObjectURL(url)
     }
   }, [backgroundNonce])
-
-  // Same debounce as the pair store, for the same reason: an alg is typed a
-  // character at a time and none of those keystrokes need to hit disk.
-  useEffect(() => {
-    const timer = setTimeout(() => saveCfopStore(cases), 400)
-    return () => clearTimeout(timer)
-  }, [cases])
-
-  // The one save worth reporting on. Solves are the only thing here you cannot
-  // retype, so a write that fails has to say so rather than leave the app
-  // looking like it is recording solves it is quietly dropping.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const result = saveTimerStore(timerStore)
-      setSaveError(result.ok ? null : result.reason)
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [timerStore])
 
   function saveEntry(entry: PairEntry) {
     setStore((prev) => {

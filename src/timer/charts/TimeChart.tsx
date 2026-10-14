@@ -2,7 +2,7 @@ import { useMemo, useState, type PointerEvent } from 'react'
 import { formatTime } from '../format'
 import { rollingAverages } from '../stats'
 import { effectiveMs, type Solve } from '../types'
-import { linePath, niceStep } from './scale'
+import { extent, linePath, niceStep } from './scale'
 
 /**
  * Every solve in the session, with the ao5, ao12 and ao100 drawn over the top.
@@ -49,48 +49,79 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
   /** Which solve the pointer is nearest, or null when it is off the chart. */
   const [hover, setHover] = useState<number | null>(null)
 
-  const times = solves.map(effectiveMs)
-  const finite = times.filter((value) => Number.isFinite(value))
+  // Everything but the hover readout, worked out once per set of solves rather
+  // than on every pointer move across the chart — with thousands of solves,
+  // redrawing every dot per mouse event is what made the sweep stutter.
+  const plot = useMemo(() => {
+    const times = solves.map(effectiveMs)
+    const range = extent(times)
+    if (!range || times.filter((value) => Number.isFinite(value)).length < 2) return null
 
-  if (finite.length < 2) {
+    const { low, high } = range
+    // A flat session would otherwise divide by zero; give it a band to sit in.
+    const span = high - low || Math.max(high * 0.1, 1000)
+    const top = high + span * 0.12
+    const bottom = Math.max(0, low - span * 0.12)
+
+    const plotWidth = WIDTH - PAD.left - PAD.right
+    const plotHeight = HEIGHT - PAD.top - PAD.bottom
+
+    const x = (index: number) =>
+      PAD.left + (solves.length === 1 ? plotWidth / 2 : (index / (solves.length - 1)) * plotWidth)
+    const y = (ms: number) =>
+      PAD.top + plotHeight - ((ms - bottom) / (top - bottom)) * plotHeight
+
+    const step = niceStep(top - bottom)
+    const lines: number[] = []
+    for (let value = Math.ceil(bottom / step) * step; value <= top; value += step) lines.push(value)
+
+    // A personal best is only a personal best against what came before it, so
+    // this walks forward rather than comparing against the session's best.
+    const isPb: boolean[] = []
+    let running = Infinity
+    for (const value of times) {
+      const better = Number.isFinite(value) && value < running
+      if (better) running = value
+      isPb.push(better)
+    }
+
+    // Every hundredth solve. The count itself stands in when there aren't a
+    // hundred yet, so a short session's axis still says how long it is.
+    const marks: number[] = [1]
+    const every = xStep(solves.length)
+    for (let mark = every; mark <= solves.length; mark += every) marks.push(mark)
+    if (marks.length === 1 && solves.length > 1) marks.push(solves.length)
+
+    const points = times.map((value, index) => {
+      // DNFs have no height of their own, so they sit on the ceiling with a
+      // shape of their own rather than dragging the scale up to infinity.
+      const dnf = !Number.isFinite(value)
+
+      return dnf ? (
+        <path
+          key={solves[index].id}
+          className="point dnf"
+          d={`M${x(index) - 3.5} ${PAD.top - 6} L${x(index) + 3.5} ${PAD.top - 6}
+              L${x(index)} ${PAD.top + 1} Z`}
+        />
+      ) : (
+        <circle
+          key={solves[index].id}
+          className={isPb[index] ? 'point pb' : 'point'}
+          cx={x(index)}
+          cy={y(value)}
+          r={isPb[index] ? 3.6 : 2.4}
+        />
+      )
+    })
+
+    return { times, x, y, lines, marks, plotWidth, plotHeight, points }
+  }, [solves])
+
+  if (!plot) {
     return <p className="chart-empty">Two solves and this fills in.</p>
   }
-
-  const low = Math.min(...finite)
-  const high = Math.max(...finite)
-  // A flat session would otherwise divide by zero; give it a band to sit in.
-  const span = high - low || Math.max(high * 0.1, 1000)
-  const top = high + span * 0.12
-  const bottom = Math.max(0, low - span * 0.12)
-
-  const plotWidth = WIDTH - PAD.left - PAD.right
-  const plotHeight = HEIGHT - PAD.top - PAD.bottom
-
-  const x = (index: number) =>
-    PAD.left + (solves.length === 1 ? plotWidth / 2 : (index / (solves.length - 1)) * plotWidth)
-  const y = (ms: number) =>
-    PAD.top + plotHeight - ((ms - bottom) / (top - bottom)) * plotHeight
-
-  const step = niceStep(top - bottom)
-  const lines: number[] = []
-  for (let value = Math.ceil(bottom / step) * step; value <= top; value += step) lines.push(value)
-
-  // A personal best is only a personal best against what came before it, so
-  // this walks forward rather than comparing against the session's best.
-  const isPb: boolean[] = []
-  let running = Infinity
-  for (const value of times) {
-    const better = Number.isFinite(value) && value < running
-    if (better) running = value
-    isPb.push(better)
-  }
-
-  // Every hundredth solve. The count itself stands in when there aren't a
-  // hundred yet, so a short session's axis still says how long it is.
-  const marks: number[] = [1]
-  const every = xStep(solves.length)
-  for (let mark = every; mark <= solves.length; mark += every) marks.push(mark)
-  if (marks.length === 1 && solves.length > 1) marks.push(solves.length)
+  const { times, x, y, lines, marks, plotWidth, plotHeight, points } = plot
 
   /**
    * The solve nearest the pointer, from where the pointer is across the plot.
@@ -145,28 +176,7 @@ export default function TimeChart({ solves, decimals }: TimeChartProps) {
         <path className="line ao12" d={linePath(ao12, x, y)} fill="none" />
         <path className="line ao5" d={linePath(ao5, x, y)} fill="none" />
 
-        {times.map((value, index) => {
-          // DNFs have no height of their own, so they sit on the ceiling with a
-          // shape of their own rather than dragging the scale up to infinity.
-          const dnf = !Number.isFinite(value)
-
-          return dnf ? (
-            <path
-              key={solves[index].id}
-              className="point dnf"
-              d={`M${x(index) - 3.5} ${PAD.top - 6} L${x(index) + 3.5} ${PAD.top - 6}
-                  L${x(index)} ${PAD.top + 1} Z`}
-            />
-          ) : (
-            <circle
-              key={solves[index].id}
-              className={isPb[index] ? 'point pb' : 'point'}
-              cx={x(index)}
-              cy={y(value)}
-              r={isPb[index] ? 3.6 : 2.4}
-            />
-          )
-        })}
+        {points}
 
         {at && (
           <circle
