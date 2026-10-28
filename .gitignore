@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local agent/editor config
-.claude/
+# Claude Code: share rules, skills, hooks and commands; keep local state out
+.claude/worktrees/
+.claude/settings.local.json
